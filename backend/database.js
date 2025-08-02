@@ -6,10 +6,11 @@ const isProduction = process.env.NODE_ENV === 'production';
 const databaseUrl = process.env.DATABASE_URL;
 
 let db;
+let pgPool;
 
 if (isProduction) {
   // PostgreSQL for production
-  db = new Pool({
+  pgPool = new Pool({
     connectionString: databaseUrl,
     ssl: {
       rejectUnauthorized: false
@@ -17,6 +18,37 @@ if (isProduction) {
   });
   
   console.log('Connected to PostgreSQL database.');
+  
+  // Create unified interface for PostgreSQL
+  db = {
+    run: async (query, params = []) => {
+      try {
+        const result = await pgPool.query(query, params);
+        return { lastID: result.rows[0]?.id };
+      } catch (error) {
+        throw error;
+      }
+    },
+    get: async (query, params = []) => {
+      try {
+        const result = await pgPool.query(query, params);
+        return result.rows[0] || null;
+      } catch (error) {
+        throw error;
+      }
+    },
+    all: async (query, params = []) => {
+      try {
+        const result = await pgPool.query(query, params);
+        return result.rows;
+      } catch (error) {
+        throw error;
+      }
+    },
+    query: async (query, params = []) => {
+      return await pgPool.query(query, params);
+    }
+  };
 } else {
   // SQLite for development
   db = new sqlite3.Database('./stock_trading.db', (err) => {
@@ -26,6 +58,9 @@ if (isProduction) {
       console.log('Connected to SQLite database.');
     }
   });
+  
+  // Add query method for SQLite compatibility
+  db.query = db.all;
 }
 
 // Initialize database tables

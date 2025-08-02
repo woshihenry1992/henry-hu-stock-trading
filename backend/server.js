@@ -80,44 +80,23 @@ app.post('/api/register', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    if (isProduction) {
-      // PostgreSQL version
-      try {
-        const result = await db.query(
-          'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id',
-          [username, hashedPassword]
-        );
+    // Insert user
+    db.run('INSERT INTO users (username, password) VALUES (?, ?)', 
+      [username, hashedPassword], 
+      function(err) {
+        if (err) {
+          if (err.message.includes('UNIQUE constraint failed')) {
+            return res.status(400).json({ error: 'Username already exists' });
+          }
+          return res.status(500).json({ error: 'Error creating user' });
+        }
         
         res.status(201).json({ 
           message: 'User created successfully',
-          userId: result.rows[0].id 
+          userId: this.lastID 
         });
-      } catch (err) {
-        if (err.code === '23505') { // PostgreSQL unique constraint error
-          return res.status(400).json({ error: 'Username already exists' });
-        }
-        console.error('PostgreSQL error:', err);
-        return res.status(500).json({ error: 'Error creating user' });
       }
-    } else {
-      // SQLite version
-      db.run('INSERT INTO users (username, password) VALUES (?, ?)', 
-        [username, hashedPassword], 
-        function(err) {
-          if (err) {
-            if (err.message.includes('UNIQUE constraint failed')) {
-              return res.status(400).json({ error: 'Username already exists' });
-            }
-            return res.status(500).json({ error: 'Error creating user' });
-          }
-          
-          res.status(201).json({ 
-            message: 'User created successfully',
-            userId: this.lastID 
-          });
-        }
-      );
-    }
+    );
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -125,62 +104,34 @@ app.post('/api/register', async (req, res) => {
 });
 
 // User login
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  try {
-    if (isProduction) {
-      // PostgreSQL version
-      const result = await db.query('SELECT * FROM users WHERE username = $1', [username]);
-      const user = result.rows[0];
-      
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      const validPassword = await bcrypt.compare(password, user.password);
-      if (!validPassword) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
-
-      const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-      res.json({ 
-        message: 'Login successful',
-        token,
-        user: { id: user.id, username: user.username }
-      });
-    } else {
-      // SQLite version
-      db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        
-        if (!user) {
-          return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-          return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ 
-          message: 'Login successful',
-          token,
-          user: { id: user.id, username: user.username }
-        });
-      });
+  db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
     }
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ 
+      message: 'Login successful',
+      token,
+      user: { id: user.id, username: user.username }
+    });
+  });
 });
 
 // Get user profile
