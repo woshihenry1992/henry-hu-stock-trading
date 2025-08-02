@@ -23,8 +23,12 @@ if (isProduction) {
   db = {
     run: (query, params = [], callback) => {
       // Convert SQLite-style placeholders to PostgreSQL
-      const pgQuery = query.replace(/\?/g, (match, index) => `$${index + 1}`);
-      const pgParams = params;
+      let pgQuery = query;
+      let pgParams = [...params];
+      
+      // Replace ? with $1, $2, etc.
+      let paramIndex = 1;
+      pgQuery = query.replace(/\?/g, () => `$${paramIndex++}`);
       
       pgPool.query(pgQuery, pgParams)
         .then(result => {
@@ -40,8 +44,12 @@ if (isProduction) {
     },
     get: (query, params = [], callback) => {
       // Convert SQLite-style placeholders to PostgreSQL
-      const pgQuery = query.replace(/\?/g, (match, index) => `$${index + 1}`);
-      const pgParams = params;
+      let pgQuery = query;
+      let pgParams = [...params];
+      
+      // Replace ? with $1, $2, etc.
+      let paramIndex = 1;
+      pgQuery = query.replace(/\?/g, () => `$${paramIndex++}`);
       
       pgPool.query(pgQuery, pgParams)
         .then(result => {
@@ -57,8 +65,12 @@ if (isProduction) {
     },
     all: (query, params = [], callback) => {
       // Convert SQLite-style placeholders to PostgreSQL
-      const pgQuery = query.replace(/\?/g, (match, index) => `$${index + 1}`);
-      const pgParams = params;
+      let pgQuery = query;
+      let pgParams = [...params];
+      
+      // Replace ? with $1, $2, etc.
+      let paramIndex = 1;
+      pgQuery = query.replace(/\?/g, () => `$${paramIndex++}`);
       
       pgPool.query(pgQuery, pgParams)
         .then(result => {
