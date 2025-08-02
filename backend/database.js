@@ -21,29 +21,56 @@ if (isProduction) {
   
   // Create unified interface for PostgreSQL
   db = {
-    run: async (query, params = []) => {
-      try {
-        const result = await pgPool.query(query, params);
-        return { lastID: result.rows[0]?.id };
-      } catch (error) {
-        throw error;
-      }
+    run: (query, params = [], callback) => {
+      // Convert SQLite-style placeholders to PostgreSQL
+      const pgQuery = query.replace(/\?/g, (match, index) => `$${index + 1}`);
+      const pgParams = params;
+      
+      pgPool.query(pgQuery, pgParams)
+        .then(result => {
+          if (callback) {
+            callback(null, { lastID: result.rows[0]?.id });
+          }
+        })
+        .catch(error => {
+          if (callback) {
+            callback(error);
+          }
+        });
     },
-    get: async (query, params = []) => {
-      try {
-        const result = await pgPool.query(query, params);
-        return result.rows[0] || null;
-      } catch (error) {
-        throw error;
-      }
+    get: (query, params = [], callback) => {
+      // Convert SQLite-style placeholders to PostgreSQL
+      const pgQuery = query.replace(/\?/g, (match, index) => `$${index + 1}`);
+      const pgParams = params;
+      
+      pgPool.query(pgQuery, pgParams)
+        .then(result => {
+          if (callback) {
+            callback(null, result.rows[0] || null);
+          }
+        })
+        .catch(error => {
+          if (callback) {
+            callback(error);
+          }
+        });
     },
-    all: async (query, params = []) => {
-      try {
-        const result = await pgPool.query(query, params);
-        return result.rows;
-      } catch (error) {
-        throw error;
-      }
+    all: (query, params = [], callback) => {
+      // Convert SQLite-style placeholders to PostgreSQL
+      const pgQuery = query.replace(/\?/g, (match, index) => `$${index + 1}`);
+      const pgParams = params;
+      
+      pgPool.query(pgQuery, pgParams)
+        .then(result => {
+          if (callback) {
+            callback(null, result.rows);
+          }
+        })
+        .catch(error => {
+          if (callback) {
+            callback(error);
+          }
+        });
     },
     query: async (query, params = []) => {
       return await pgPool.query(query, params);
