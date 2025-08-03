@@ -16,11 +16,14 @@ const TransactionHistory = ({ onClose }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      setTransactions(response.data);
+      // Fix: Handle the response format properly
+      const transactionsData = response.data.transactions || response.data || [];
+      setTransactions(transactionsData);
       setError('');
     } catch (err) {
       setError('Failed to load transactions');
       console.error('Error fetching transactions:', err);
+      setTransactions([]); // Ensure it's always an array
     } finally {
       setLoading(false);
     }
