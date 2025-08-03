@@ -678,6 +678,35 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   }
 });
 
+// Debug endpoint to test portfolio query
+app.get('/api/debug-portfolio', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const stockId = req.query.stock_id;
+
+  if (isProduction) {
+    // Test the exact query being used in portfolio
+    pgPool.query(`
+      SELECT 
+        COALESCE(SUM(shares), 0) as current_shares,
+        COALESCE(SUM(shares * buy_price_per_share), 0) as total_invested_current
+      FROM share_lots 
+      WHERE stock_id = $1 AND status = 'active'
+    `, [stockId])
+    .then(result => {
+      res.json({
+        stock_id: stockId,
+        query_result: result.rows[0],
+        expected_shares: 10
+      });
+    })
+    .catch(err => {
+      res.status(500).json({ error: err.message });
+    });
+  } else {
+    res.json({ error: 'Debug endpoint only available in production' });
+  }
+});
+
 // Get monthly earnings data for charts
 app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const userId = req.user.userId;
