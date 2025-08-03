@@ -495,42 +495,82 @@ app.post('/api/stocks/:stockId/sell-lots', authenticateToken, (req, res) => {
 app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
-  // Get all stocks with their transaction summaries using share_lots
-  db.all(`
-    SELECT 
-      s.id,
-      s.stock_name,
-      s.created_at,
-      COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares ELSE 0 END), 0) as current_shares,
-      COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_invested_current,
-      COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.sell_price_per_share ELSE 0 END), 0) as total_realized,
-      COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_cost_sold
-    FROM stocks s
-    LEFT JOIN share_lots sl ON s.id = sl.stock_id
-    WHERE s.user_id = ?
-    GROUP BY s.id, s.stock_name, s.created_at
-    ORDER BY s.created_at DESC
-  `, [userId], (err, stocks) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
+  if (isProduction) {
+    // PostgreSQL version
+    db.query(`
+      SELECT 
+        s.id,
+        s.stock_name,
+        s.created_at,
+        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares ELSE 0 END), 0) as current_shares,
+        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_invested_current,
+        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.sell_price_per_share ELSE 0 END), 0) as total_realized,
+        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_cost_sold
+      FROM stocks s
+      LEFT JOIN share_lots sl ON s.id = sl.stock_id
+      WHERE s.user_id = $1
+      GROUP BY s.id, s.stock_name, s.created_at
+      ORDER BY s.created_at DESC
+    `, [userId])
+    .then(result => {
+      // Calculate portfolio metrics
+      const portfolio = result.rows.map(stock => {
+        const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
+        const actual_earned = stock.total_realized - stock.total_cost_sold;
+        
+        return {
+          ...stock,
+          current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
+          avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
+          total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
+          actual_earned: parseFloat(actual_earned.toFixed(2))
+        };
+      });
 
-    // Calculate portfolio metrics
-    const portfolio = stocks.map(stock => {
-      const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-      const actual_earned = stock.total_realized - stock.total_cost_sold;
-      
-      return {
-        ...stock,
-        current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
-        avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
-        total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-        actual_earned: parseFloat(actual_earned.toFixed(2))
-      };
+      res.json(portfolio);
+    })
+    .catch(err => {
+      console.error('Portfolio query error:', err);
+      res.status(500).json({ error: 'Database error' });
     });
+  } else {
+    // SQLite version
+    db.all(`
+      SELECT 
+        s.id,
+        s.stock_name,
+        s.created_at,
+        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares ELSE 0 END), 0) as current_shares,
+        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_invested_current,
+        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.sell_price_per_share ELSE 0 END), 0) as total_realized,
+        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_cost_sold
+      FROM stocks s
+      LEFT JOIN share_lots sl ON s.id = sl.stock_id
+      WHERE s.user_id = ?
+      GROUP BY s.id, s.stock_name, s.created_at
+      ORDER BY s.created_at DESC
+    `, [userId], (err, stocks) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
 
-    res.json({ portfolio });
-  });
+      // Calculate portfolio metrics
+      const portfolio = stocks.map(stock => {
+        const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
+        const actual_earned = stock.total_realized - stock.total_cost_sold;
+        
+        return {
+          ...stock,
+          current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
+          avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
+          total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
+          actual_earned: parseFloat(actual_earned.toFixed(2))
+        };
+      });
+
+      res.json(portfolio);
+    });
+  }
 });
 
 // Get monthly earnings data for charts
@@ -538,48 +578,94 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const userId = req.user.userId;
   const year = req.query.year || new Date().getFullYear();
 
-  // Get monthly earnings from sold share lots
-  db.all(`
-    SELECT 
-      strftime('%m', sl.sell_date) as month,
-      strftime('%Y', sl.sell_date) as year,
-      SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
-      COUNT(*) as transactions_count
-    FROM share_lots sl
-    WHERE sl.user_id = ? 
-      AND sl.status = 'sold'
-      AND strftime('%Y', sl.sell_date) = ?
-    GROUP BY strftime('%m', sl.sell_date), strftime('%Y', sl.sell_date)
-    ORDER BY month ASC
-  `, [userId, year.toString()], (err, monthlyData) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
+  if (isProduction) {
+    // PostgreSQL version
+    db.query(`
+      SELECT 
+        EXTRACT(MONTH FROM sl.sell_date) as month,
+        EXTRACT(YEAR FROM sl.sell_date) as year,
+        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+        COUNT(*) as transactions_count
+      FROM share_lots sl
+      WHERE sl.user_id = $1 
+        AND sl.status = 'sold'
+        AND EXTRACT(YEAR FROM sl.sell_date) = $2
+      GROUP BY EXTRACT(MONTH FROM sl.sell_date), EXTRACT(YEAR FROM sl.sell_date)
+      ORDER BY month ASC
+    `, [userId, year])
+    .then(result => {
+      // Create complete year data with all months
+      const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
 
-    // Create complete year data with all months
-    const monthNames = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
+      const completeYearData = monthNames.map((monthName, index) => {
+        const monthNumber = (index + 1).toString().padStart(2, '0');
+        const existingData = result.rows.find(data => data.month.toString().padStart(2, '0') === monthNumber);
+        
+        return {
+          month: monthName,
+          monthNumber: monthNumber,
+          earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
+          transactions: existingData ? existingData.transactions_count : 0
+        };
+      });
 
-    const completeYearData = monthNames.map((monthName, index) => {
-      const monthNumber = (index + 1).toString().padStart(2, '0');
-      const existingData = monthlyData.find(data => data.month === monthNumber);
-      
-      return {
-        month: monthName,
-        monthNumber: monthNumber,
-        earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
-        transactions: existingData ? existingData.transactions_count : 0
-      };
+      res.json({ 
+        year: parseInt(year),
+        monthlyEarnings: completeYearData,
+        totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
+      });
+    })
+    .catch(err => {
+      console.error('Earnings query error:', err);
+      res.status(500).json({ error: 'Database error' });
     });
+  } else {
+    // SQLite version
+    db.all(`
+      SELECT 
+        strftime('%m', sl.sell_date) as month,
+        strftime('%Y', sl.sell_date) as year,
+        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+        COUNT(*) as transactions_count
+      FROM share_lots sl
+      WHERE sl.user_id = ? 
+        AND sl.status = 'sold'
+        AND strftime('%Y', sl.sell_date) = ?
+      GROUP BY strftime('%m', sl.sell_date), strftime('%Y', sl.sell_date)
+      ORDER BY month ASC
+    `, [userId, year.toString()], (err, monthlyData) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
 
-    res.json({ 
-      year: parseInt(year),
-      monthlyEarnings: completeYearData,
-      totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
+      // Create complete year data with all months
+      const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+
+      const completeYearData = monthNames.map((monthName, index) => {
+        const monthNumber = (index + 1).toString().padStart(2, '0');
+        const existingData = monthlyData.find(data => data.month === monthNumber);
+        
+        return {
+          month: monthName,
+          monthNumber: monthNumber,
+          earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
+          transactions: existingData ? existingData.transactions_count : 0
+        };
+      });
+
+      res.json({ 
+        year: parseInt(year),
+        monthlyEarnings: completeYearData,
+        totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
+      });
     });
-  });
+  }
 });
 
 // Delete individual share lot
