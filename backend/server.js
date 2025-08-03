@@ -247,76 +247,136 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
   const total_amount = shares * price_per_share;
   const date = transaction_date || new Date().toISOString();
 
-  // Verify stock belongs to user
-  db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
-    [stock_id, userId], (err, stock) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (!stock) {
-        return res.status(404).json({ error: 'Stock not found' });
-      }
+  if (isProduction) {
+    // PostgreSQL version
+    // First verify stock belongs to user
+    pgPool.query('SELECT * FROM stocks WHERE id = $1 AND user_id = $2', [stock_id, userId])
+      .then(stockResult => {
+        if (stockResult.rows.length === 0) {
+          return res.status(404).json({ error: 'Stock not found' });
+        }
 
-      // Start transaction
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-
-        // Insert transaction
-        db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
-          [userId, stock_id, transaction_type, shares, price_per_share, total_amount, date], function(err) {
-            if (err) {
-              db.run('ROLLBACK');
-              return res.status(500).json({ error: 'Error creating transaction' });
-            }
-
-            const transactionId = this.lastID;
+        // Use transaction
+        return pgPool.query('BEGIN')
+          .then(() => {
+            // Insert transaction
+            return pgPool.query(
+              'INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+              [userId, stock_id, transaction_type, shares, price_per_share, total_amount, date]
+            );
+          })
+          .then(transactionResult => {
+            const transactionId = transactionResult.rows[0].id;
 
             // If it's a buy transaction, create share lots
             if (transaction_type === 'buy') {
-              db.run('INSERT INTO share_lots (user_id, stock_id, buy_transaction_id, shares, buy_price_per_share, buy_date) VALUES (?, ?, ?, ?, ?, ?)', 
-                [userId, stock_id, transactionId, shares, price_per_share, date], function(err) {
-                  if (err) {
-                    db.run('ROLLBACK');
-                    return res.status(500).json({ error: 'Error creating share lots' });
-                  }
-
-                  db.run('COMMIT');
-                  res.status(201).json({ 
-                    message: 'Transaction created successfully',
-                    transaction: {
-                      id: transactionId,
-                      stock_id,
-                      transaction_type,
-                      shares,
-                      price_per_share,
-                      total_amount,
-                      transaction_date: date
-                    }
-                  });
-                }
+              return pgPool.query(
+                'INSERT INTO share_lots (user_id, stock_id, buy_transaction_id, shares, buy_price_per_share, buy_date) VALUES ($1, $2, $3, $4, $5, $6)',
+                [userId, stock_id, transactionId, shares, price_per_share, date]
               );
-            } else {
-              // For sell transactions, just commit the transaction
-              db.run('COMMIT');
-              res.status(201).json({ 
-                message: 'Transaction created successfully',
-                transaction: {
-                  id: transactionId,
-                  stock_id,
-                  transaction_type,
-                  shares,
-                  price_per_share,
-                  total_amount,
-                  transaction_date: date
-                }
-              });
             }
-          }
-        );
+            return Promise.resolve();
+          })
+          .then(() => {
+            return pgPool.query('COMMIT');
+          })
+          .then(() => {
+            res.status(201).json({ 
+              message: 'Transaction created successfully',
+              transaction: {
+                stock_id,
+                transaction_type,
+                shares,
+                price_per_share,
+                total_amount,
+                transaction_date: date
+              }
+            });
+          })
+          .catch(err => {
+            return pgPool.query('ROLLBACK')
+              .then(() => {
+                console.error('Transaction error:', err);
+                res.status(500).json({ error: 'Error creating transaction' });
+              });
+          });
+      })
+      .catch(err => {
+        console.error('Stock verification error:', err);
+        res.status(500).json({ error: 'Database error' });
       });
-    }
-  );
+  } else {
+    // SQLite version
+    db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
+      [stock_id, userId], (err, stock) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (!stock) {
+          return res.status(404).json({ error: 'Stock not found' });
+        }
+
+        // Start transaction
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+
+          // Insert transaction
+          db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+            [userId, stock_id, transaction_type, shares, price_per_share, total_amount, date], function(err) {
+              if (err) {
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Error creating transaction' });
+              }
+
+              const transactionId = this.lastID;
+
+              // If it's a buy transaction, create share lots
+              if (transaction_type === 'buy') {
+                db.run('INSERT INTO share_lots (user_id, stock_id, buy_transaction_id, shares, buy_price_per_share, buy_date) VALUES (?, ?, ?, ?, ?, ?)', 
+                  [userId, stock_id, transactionId, shares, price_per_share, date], function(err) {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      return res.status(500).json({ error: 'Error creating share lots' });
+                    }
+
+                    db.run('COMMIT');
+                    res.status(201).json({ 
+                      message: 'Transaction created successfully',
+                      transaction: {
+                        id: transactionId,
+                        stock_id,
+                        transaction_type,
+                        shares,
+                        price_per_share,
+                        total_amount,
+                        transaction_date: date
+                      }
+                    });
+                  }
+                );
+              } else {
+                // For sell transactions, just commit the transaction
+                db.run('COMMIT');
+                res.status(201).json({ 
+                  message: 'Transaction created successfully',
+                  transaction: {
+                    id: transactionId,
+                    stock_id,
+                    transaction_type,
+                    shares,
+                    price_per_share,
+                    total_amount,
+                    transaction_date: date
+                  }
+                });
+              }
+            }
+          );
+        });
+      }
+    );
+  }
 });
 
 // Get transactions for a stock
