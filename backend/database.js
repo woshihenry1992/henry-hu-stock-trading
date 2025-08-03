@@ -86,6 +86,25 @@ if (isProduction) {
     },
     query: async (query, params = []) => {
       return await pgPool.query(query, params);
+    },
+    serialize: (callback) => {
+      // For PostgreSQL, we don't need serialize since we use transactions
+      callback();
+    },
+    // Add transaction support for PostgreSQL
+    transaction: async (callback) => {
+      const client = await pgPool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await callback(client);
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     }
   };
 } else {
@@ -100,6 +119,27 @@ if (isProduction) {
   
   // Add query method for SQLite compatibility
   db.query = db.all;
+  
+  // Add transaction support for SQLite
+  db.transaction = async (callback) => {
+    return new Promise((resolve, reject) => {
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        callback(db)
+          .then(result => {
+            db.run('COMMIT', (err) => {
+              if (err) reject(err);
+              else resolve(result);
+            });
+          })
+          .catch(error => {
+            db.run('ROLLBACK', () => {
+              reject(error);
+            });
+          });
+      });
+    });
+  };
 }
 
 // Initialize database tables
