@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useTheme } from '../contexts/ThemeContext';
+import { API_ENDPOINTS } from '../config/api';
 
 const Register = ({ onRegister }) => {
   const [formData, setFormData] = useState({
@@ -37,13 +38,13 @@ const Register = ({ onRegister }) => {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:3001/api/register', {
+      const response = await axios.post(API_ENDPOINTS.REGISTER, {
         username: formData.username,
         password: formData.password
       });
       
       // Auto-login after successful registration
-      const loginResponse = await axios.post('http://localhost:3001/api/login', {
+      const loginResponse = await axios.post(API_ENDPOINTS.LOGIN, {
         username: formData.username,
         password: formData.password
       });
