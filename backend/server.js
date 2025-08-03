@@ -598,18 +598,24 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - calculate real portfolio data
+    // PostgreSQL version - simplified query to avoid database errors
     pgPool.query(`
       SELECT 
         s.id,
         s.stock_name,
         s.created_at,
-        COALESCE(SUM(sl.shares), 0) as current_shares,
-        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
+        COALESCE((
+          SELECT SUM(sl.shares) 
+          FROM share_lots sl 
+          WHERE sl.stock_id = s.id AND sl.status = 'active'
+        ), 0) as current_shares,
+        COALESCE((
+          SELECT SUM(sl.shares * sl.buy_price_per_share) 
+          FROM share_lots sl 
+          WHERE sl.stock_id = s.id AND sl.status = 'active'
+        ), 0) as total_invested_current
       FROM stocks s
-      LEFT JOIN share_lots sl ON s.id = sl.stock_id AND sl.status = 'active'
       WHERE s.user_id = $1
-      GROUP BY s.id, s.stock_name, s.created_at
       ORDER BY s.created_at DESC
     `, [userId])
     .then(result => {
