@@ -581,33 +581,25 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - simplified calculation without status column
+    // PostgreSQL version - very simple query first
     pgPool.query(`
       SELECT 
         s.id,
         s.stock_name,
-        s.created_at,
-        COALESCE(SUM(sl.shares), 0) as current_shares,
-        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
+        s.created_at
       FROM stocks s
-      LEFT JOIN share_lots sl ON s.id = sl.stock_id
       WHERE s.user_id = $1
-      GROUP BY s.id, s.stock_name, s.created_at
       ORDER BY s.created_at DESC
     `, [userId])
     .then(result => {
-      // Calculate portfolio metrics
-      const portfolio = result.rows.map(stock => {
-        const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-        
-        return {
-          ...stock,
-          current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
-          avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
-          total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-          actual_earned: 0 // Simplified for now
-        };
-      });
+      // Add basic portfolio metrics
+      const portfolio = result.rows.map(stock => ({
+        ...stock,
+        current_shares: 0,
+        avg_buy_price: 0,
+        total_invested: 0,
+        actual_earned: 0
+      }));
 
       res.json(portfolio);
     })
@@ -616,36 +608,28 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
       res.status(500).json({ error: 'Database error' });
     });
   } else {
-    // SQLite version - simplified calculation without status column
+    // SQLite version - very simple query first
     db.all(`
       SELECT 
         s.id,
         s.stock_name,
-        s.created_at,
-        COALESCE(SUM(sl.shares), 0) as current_shares,
-        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
+        s.created_at
       FROM stocks s
-      LEFT JOIN share_lots sl ON s.id = sl.stock_id
       WHERE s.user_id = ?
-      GROUP BY s.id, s.stock_name, s.created_at
       ORDER BY s.created_at DESC
     `, [userId], (err, stocks) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
 
-      // Calculate portfolio metrics
-      const portfolio = stocks.map(stock => {
-        const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-        
-        return {
-          ...stock,
-          current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
-          avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
-          total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-          actual_earned: 0 // Simplified for now
-        };
-      });
+      // Add basic portfolio metrics
+      const portfolio = stocks.map(stock => ({
+        ...stock,
+        current_shares: 0,
+        avg_buy_price: 0,
+        total_invested: 0,
+        actual_earned: 0
+      }));
 
       res.json(portfolio);
     });
