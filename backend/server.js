@@ -782,7 +782,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const year = req.query.year || new Date().getFullYear();
 
   if (isProduction) {
-    // PostgreSQL version - fixed to use pgPool.query
+    // PostgreSQL version - fixed to use pgPool.query and handle null sell_date
     pgPool.query(`
       SELECT 
         EXTRACT(MONTH FROM sl.sell_date) as month,
@@ -792,6 +792,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       FROM share_lots sl
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
+        AND sl.sell_date IS NOT NULL
         AND EXTRACT(YEAR FROM sl.sell_date) = $2
       GROUP BY EXTRACT(MONTH FROM sl.sell_date), EXTRACT(YEAR FROM sl.sell_date)
       ORDER BY month ASC
@@ -836,6 +837,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       FROM share_lots sl
       WHERE sl.user_id = ? 
         AND sl.status = 'sold'
+        AND sl.sell_date IS NOT NULL
         AND strftime('%Y', sl.sell_date) = ?
       GROUP BY strftime('%m', sl.sell_date), strftime('%Y', sl.sell_date)
       ORDER BY month ASC
