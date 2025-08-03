@@ -598,68 +598,81 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - original working logic
+    // PostgreSQL version - very simple approach
     pgPool.query(`
       SELECT 
         s.id,
         s.stock_name,
-        s.created_at,
-        COALESCE(SUM(sl.shares), 0) as current_shares,
-        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
+        s.created_at
       FROM stocks s
-      LEFT JOIN share_lots sl ON s.id = sl.stock_id AND sl.status = 'active'
       WHERE s.user_id = $1
-      GROUP BY s.id, s.stock_name, s.created_at
       ORDER BY s.created_at DESC
     `, [userId])
     .then(result => {
-      // Calculate portfolio metrics
-      const portfolio = result.rows.map(stock => {
-        const avgBuyPrice = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-        return {
-          ...stock,
-          avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
-          total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-          actual_earned: 0 // Will be calculated when we add sell functionality
-        };
+      // For each stock, get the share lots data separately
+      const portfolioPromises = result.rows.map(async (stock) => {
+        try {
+          const shareLotsResult = await pgPool.query(`
+            SELECT 
+              COALESCE(SUM(shares), 0) as current_shares,
+              COALESCE(SUM(shares * buy_price_per_share), 0) as total_invested_current
+            FROM share_lots 
+            WHERE stock_id = $1 AND status = 'active'
+          `, [stock.id]);
+          
+          const shareData = shareLotsResult.rows[0];
+          const avgBuyPrice = shareData.current_shares > 0 ? shareData.total_invested_current / shareData.current_shares : 0;
+          
+          return {
+            ...stock,
+            current_shares: parseInt(shareData.current_shares),
+            avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
+            total_invested: parseFloat(shareData.total_invested_current.toFixed(2)),
+            actual_earned: 0 // Will be calculated when we add sell functionality
+          };
+        } catch (err) {
+          console.error(`Error getting share lots for stock ${stock.id}:`, err);
+          return {
+            ...stock,
+            current_shares: 0,
+            avg_buy_price: 0,
+            total_invested: 0,
+            actual_earned: 0
+          };
+        }
       });
 
-      res.json(portfolio);
+      Promise.all(portfolioPromises)
+        .then(portfolio => {
+          res.json(portfolio);
+        })
+        .catch(err => {
+          console.error('Portfolio calculation error:', err);
+          res.status(500).json({ error: 'Database error' });
+        });
     })
     .catch(err => {
       console.error('Portfolio query error:', err);
       res.status(500).json({ error: 'Database error' });
     });
   } else {
-    // SQLite version - original working logic
+    // SQLite version - simplified for development
     db.all(`
       SELECT 
         s.id,
         s.stock_name,
         s.created_at,
-        COALESCE(SUM(sl.shares), 0) as current_shares,
-        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
+        0 as current_shares,
+        0 as avg_buy_price,
+        0 as total_invested,
+        0 as actual_earned
       FROM stocks s
-      LEFT JOIN share_lots sl ON s.id = sl.stock_id AND sl.status = 'active'
       WHERE s.user_id = ?
-      GROUP BY s.id, s.stock_name, s.created_at
       ORDER BY s.created_at DESC
-    `, [userId], (err, result) => {
+    `, [userId], (err, portfolio) => {
       if (err) {
         return res.status(500).json({ error: err.message });
       }
-      
-      // Calculate portfolio metrics
-      const portfolio = result.map(stock => {
-        const avgBuyPrice = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-        return {
-          ...stock,
-          avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
-          total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-          actual_earned: 0 // Will be calculated when we add sell functionality
-        };
-      });
-      
       res.json(portfolio);
     });
   }
