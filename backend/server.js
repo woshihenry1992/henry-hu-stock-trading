@@ -80,6 +80,23 @@ app.get('/api/health', (req, res) => {
   res.json({ message: 'Stock Trading API is running!' });
 });
 
+// Test database connection
+app.get('/api/test-connection', (req, res) => {
+  if (isProduction) {
+    if (!pgPool) {
+      return res.status(500).json({ error: 'pgPool not initialized' });
+    }
+    pgPool.query('SELECT 1 as test', (err, result) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database connection failed', details: err.message });
+      }
+      res.json({ message: 'Database connection successful', isProduction });
+    });
+  } else {
+    res.json({ message: 'Development mode - SQLite', isProduction });
+  }
+});
+
 // User registration
 app.post('/api/register', async (req, res) => {
   try {
