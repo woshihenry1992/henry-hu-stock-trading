@@ -598,7 +598,7 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - very simple approach
+    // PostgreSQL version - fixed async handling
     pgPool.query(`
       SELECT 
         s.id,
@@ -644,6 +644,7 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
 
       Promise.all(portfolioPromises)
         .then(portfolio => {
+          console.log('Portfolio result:', portfolio); // Debug log
           res.json(portfolio);
         })
         .catch(err => {
