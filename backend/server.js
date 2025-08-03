@@ -581,16 +581,14 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - full calculation
+    // PostgreSQL version - simplified calculation without status column
     pgPool.query(`
       SELECT 
         s.id,
         s.stock_name,
         s.created_at,
-        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares ELSE 0 END), 0) as current_shares,
-        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_invested_current,
-        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.sell_price_per_share ELSE 0 END), 0) as total_realized,
-        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_cost_sold
+        COALESCE(SUM(sl.shares), 0) as current_shares,
+        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
       FROM stocks s
       LEFT JOIN share_lots sl ON s.id = sl.stock_id
       WHERE s.user_id = $1
@@ -601,14 +599,13 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
       // Calculate portfolio metrics
       const portfolio = result.rows.map(stock => {
         const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-        const actual_earned = stock.total_realized - stock.total_cost_sold;
         
         return {
           ...stock,
           current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
           avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
           total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-          actual_earned: parseFloat(actual_earned.toFixed(2))
+          actual_earned: 0 // Simplified for now
         };
       });
 
@@ -619,16 +616,14 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
       res.status(500).json({ error: 'Database error' });
     });
   } else {
-    // SQLite version - full calculation
+    // SQLite version - simplified calculation without status column
     db.all(`
       SELECT 
         s.id,
         s.stock_name,
         s.created_at,
-        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares ELSE 0 END), 0) as current_shares,
-        COALESCE(SUM(CASE WHEN sl.status = 'active' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_invested_current,
-        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.sell_price_per_share ELSE 0 END), 0) as total_realized,
-        COALESCE(SUM(CASE WHEN sl.status = 'sold' THEN sl.shares * sl.buy_price_per_share ELSE 0 END), 0) as total_cost_sold
+        COALESCE(SUM(sl.shares), 0) as current_shares,
+        COALESCE(SUM(sl.shares * sl.buy_price_per_share), 0) as total_invested_current
       FROM stocks s
       LEFT JOIN share_lots sl ON s.id = sl.stock_id
       WHERE s.user_id = ?
@@ -642,14 +637,13 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
       // Calculate portfolio metrics
       const portfolio = stocks.map(stock => {
         const avg_buy_price = stock.current_shares > 0 ? stock.total_invested_current / stock.current_shares : 0;
-        const actual_earned = stock.total_realized - stock.total_cost_sold;
         
         return {
           ...stock,
           current_shares: Math.max(0, stock.current_shares), // Ensure no negative shares
           avg_buy_price: parseFloat(avg_buy_price.toFixed(2)),
           total_invested: parseFloat(stock.total_invested_current.toFixed(2)),
-          actual_earned: parseFloat(actual_earned.toFixed(2))
+          actual_earned: 0 // Simplified for now
         };
       });
 
