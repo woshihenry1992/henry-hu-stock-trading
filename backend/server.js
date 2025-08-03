@@ -782,8 +782,8 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const year = req.query.year || new Date().getFullYear();
 
   if (isProduction) {
-    // PostgreSQL version
-    db.query(`
+    // PostgreSQL version - fixed to use pgPool.query
+    pgPool.query(`
       SELECT 
         EXTRACT(MONTH FROM sl.sell_date) as month,
         EXTRACT(YEAR FROM sl.sell_date) as year,
