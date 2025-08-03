@@ -708,6 +708,68 @@ app.get('/api/debug-portfolio', authenticateToken, (req, res) => {
   }
 });
 
+// Simple test endpoint for portfolio calculation
+app.get('/api/test-portfolio-calculation', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const stockId = req.query.stock_id || 11;
+
+  if (isProduction) {
+    // Test the portfolio calculation step by step
+    pgPool.query(`
+      SELECT 
+        s.id,
+        s.stock_name,
+        s.created_at
+      FROM stocks s
+      WHERE s.id = $1 AND s.user_id = $2
+    `, [stockId, userId])
+    .then(result => {
+      if (result.rows.length === 0) {
+        return res.json({ error: 'Stock not found' });
+      }
+      
+      const stock = result.rows[0];
+      
+      return pgPool.query(`
+        SELECT 
+          COALESCE(SUM(shares), 0) as current_shares,
+          COALESCE(SUM(shares * buy_price_per_share), 0) as total_invested_current
+        FROM share_lots 
+        WHERE stock_id = $1 AND status = 'active'
+      `, [stock.id])
+      .then(shareLotsResult => {
+        const shareData = shareLotsResult.rows[0];
+        const avgBuyPrice = shareData.current_shares > 0 ? shareData.total_invested_current / shareData.current_shares : 0;
+        
+        const portfolioItem = {
+          ...stock,
+          current_shares: parseInt(shareData.current_shares),
+          avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
+          total_invested: parseFloat(shareData.total_invested_current.toFixed(2)),
+          actual_earned: 0
+        };
+        
+        res.json({
+          stock,
+          shareData,
+          portfolioItem,
+          debug: {
+            stockId,
+            userId,
+            shareLotsQuery: `SELECT COALESCE(SUM(shares), 0) as current_shares, COALESCE(SUM(shares * buy_price_per_share), 0) as total_invested_current FROM share_lots WHERE stock_id = ${stock.id} AND status = 'active'`
+          }
+        });
+      });
+    })
+    .catch(err => {
+      console.error('Test portfolio calculation error:', err);
+      res.status(500).json({ error: err.message });
+    });
+  } else {
+    res.json({ error: 'Test endpoint only available in production' });
+  }
+});
+
 // Get monthly earnings data for charts
 app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const userId = req.user.userId;
