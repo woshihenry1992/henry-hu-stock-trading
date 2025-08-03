@@ -621,13 +621,16 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
           `, [stock.id]);
           
           const shareData = shareLotsResult.rows[0];
-          const avgBuyPrice = shareData.current_shares > 0 ? shareData.total_invested_current / shareData.current_shares : 0;
+          // Convert string values to numbers
+          const currentShares = parseFloat(shareData.current_shares) || 0;
+          const totalInvested = parseFloat(shareData.total_invested_current) || 0;
+          const avgBuyPrice = currentShares > 0 ? totalInvested / currentShares : 0;
           
           return {
             ...stock,
-            current_shares: parseInt(shareData.current_shares),
+            current_shares: parseInt(currentShares),
             avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
-            total_invested: parseFloat(shareData.total_invested_current.toFixed(2)),
+            total_invested: parseFloat(totalInvested.toFixed(2)),
             actual_earned: 0 // Will be calculated when we add sell functionality
           };
         } catch (err) {
@@ -739,13 +742,16 @@ app.get('/api/test-portfolio-calculation', authenticateToken, (req, res) => {
       `, [stock.id])
       .then(shareLotsResult => {
         const shareData = shareLotsResult.rows[0];
-        const avgBuyPrice = shareData.current_shares > 0 ? shareData.total_invested_current / shareData.current_shares : 0;
+        // Convert string values to numbers
+        const currentShares = parseFloat(shareData.current_shares) || 0;
+        const totalInvested = parseFloat(shareData.total_invested_current) || 0;
+        const avgBuyPrice = currentShares > 0 ? totalInvested / currentShares : 0;
         
         const portfolioItem = {
           ...stock,
-          current_shares: parseInt(shareData.current_shares),
+          current_shares: parseInt(currentShares),
           avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
-          total_invested: parseFloat(shareData.total_invested_current.toFixed(2)),
+          total_invested: parseFloat(totalInvested.toFixed(2)),
           actual_earned: 0
         };
         
