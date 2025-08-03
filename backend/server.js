@@ -873,6 +873,30 @@ app.put('/api/share-lots/:lotId', authenticateToken, (req, res) => {
     });
 });
 
+// Test endpoint to check database structure
+app.get('/api/test-db', authenticateToken, (req, res) => {
+  if (isProduction) {
+    db.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+    `)
+    .then(result => {
+      res.json({ tables: result.rows.map(row => row.table_name) });
+    })
+    .catch(err => {
+      res.status(500).json({ error: err.message });
+    });
+  } else {
+    db.all("SELECT name FROM sqlite_master WHERE type='table'", [], (err, tables) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ tables: tables.map(t => t.name) });
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
