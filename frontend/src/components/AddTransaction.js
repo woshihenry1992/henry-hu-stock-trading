@@ -2,17 +2,17 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../config/api';
 
-const AddTransaction = ({ onTransactionAdded }) => {
-  const [stocks, setStocks] = useState([]);
+const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
+  const [availableStocks, setAvailableStocks] = useState([]);
+  const [selectedStockId, setSelectedStockId] = useState(stock?.id || '');
   const [formData, setFormData] = useState({
-    stock_id: '',
-    transaction_type: 'buy',
+    transaction_type: 'buy', // Always buy
     shares: '',
-    price_per_share: ''
+    price_per_share: '',
+    transaction_date: new Date().toISOString().split('T')[0] // Default to today
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     fetchStocks();
@@ -24,7 +24,10 @@ const AddTransaction = ({ onTransactionAdded }) => {
       const response = await axios.get(API_ENDPOINTS.STOCKS, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setStocks(response.data);
+      setAvailableStocks(response.data);
+      if (!selectedStockId && response.data.length > 0) {
+        setSelectedStockId(response.data[0].id);
+      }
     } catch (err) {
       setError('Failed to load stocks');
     }
@@ -40,26 +43,22 @@ const AddTransaction = ({ onTransactionAdded }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post(API_ENDPOINTS.TRANSACTIONS,
-        formData,
+      const response = await axios.post(API_ENDPOINTS.TRANSACTIONS, 
+        {
+          stock_id: selectedStockId,
+          transaction_type: 'buy', // Always buy
+          shares: parseInt(formData.shares),
+          price_per_share: parseFloat(formData.price_per_share),
+          transaction_date: new Date(formData.transaction_date).toISOString()
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       
-      setSuccess('Transaction added successfully!');
-      setFormData({
-        stock_id: '',
-        transaction_type: 'buy',
-        shares: '',
-        price_per_share: ''
-      });
-      if (onTransactionAdded) {
-        onTransactionAdded(response.data);
-      }
+      onTransactionAdded();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to add transaction');
     } finally {
