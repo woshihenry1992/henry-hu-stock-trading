@@ -24,12 +24,15 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
       const response = await axios.get(API_ENDPOINTS.STOCKS, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setAvailableStocks(response.data);
-      if (!selectedStockId && response.data.length > 0) {
-        setSelectedStockId(response.data[0].id);
+      // Fix: Handle the response format properly
+      const stocks = response.data.stocks || response.data || [];
+      setAvailableStocks(stocks);
+      if (!selectedStockId && stocks.length > 0) {
+        setSelectedStockId(stocks[0].id);
       }
     } catch (err) {
       setError('Failed to load stocks');
+      setAvailableStocks([]); // Ensure it's always an array
     }
   };
 
@@ -92,7 +95,7 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
             required
           >
             <option value="">Select a stock</option>
-            {availableStocks.map((stock) => (
+            {(availableStocks || []).map((stock) => (
               <option key={stock.id} value={stock.id}>
                 {stock.stock_name}
               </option>
