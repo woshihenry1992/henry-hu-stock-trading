@@ -3,9 +3,21 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const { Pool } = require('pg');
 
 // Import database configuration
 const { db, initializeDatabase, isProduction } = require('./database');
+
+// Create PostgreSQL pool for direct access
+let pgPool;
+if (isProduction) {
+  pgPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+      rejectUnauthorized: false
+    }
+  });
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -509,8 +521,8 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - simplified
-    db.query(`
+    // Direct PostgreSQL query
+    pgPool.query(`
       SELECT 
         s.id,
         s.stock_name,
