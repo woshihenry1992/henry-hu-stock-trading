@@ -897,6 +897,30 @@ app.get('/api/test-db', authenticateToken, (req, res) => {
   }
 });
 
+// Test endpoint to check share_lots table
+app.get('/api/test-share-lots', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  if (isProduction) {
+    db.query(`
+      SELECT * FROM share_lots WHERE user_id = $1 LIMIT 5
+    `, [userId])
+    .then(result => {
+      res.json({ share_lots: result.rows });
+    })
+    .catch(err => {
+      res.status(500).json({ error: err.message });
+    });
+  } else {
+    db.all("SELECT * FROM share_lots WHERE user_id = ? LIMIT 5", [userId], (err, shareLots) => {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ share_lots: shareLots });
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
