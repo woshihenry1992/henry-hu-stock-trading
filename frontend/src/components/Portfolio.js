@@ -90,7 +90,7 @@ const Portfolio = () => {
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {portfolio.map((stock) => (
+          {(portfolio || []).map((stock) => (
             <div key={stock.id} className="rounded-lg shadow-md p-6" style={{ backgroundColor: theme.colors.card }}>
               <div className="flex justify-between items-start mb-4">
                 <h3 className="text-xl font-semibold" style={{ color: theme.colors.text }}>{stock.stock_name}</h3>

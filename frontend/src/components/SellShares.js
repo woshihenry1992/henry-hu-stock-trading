@@ -34,9 +34,12 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('Fetched share lots:', response.data.shareLots); // Debug log
-      setShareLots(response.data.filter(lot => lot.status === 'active'));
+      // Fix: Handle the response format properly
+      const shareLotsData = response.data.shareLots || response.data || [];
+      setShareLots(shareLotsData.filter(lot => lot.status === 'active'));
     } catch (err) {
       setError('Failed to load share lots');
+      setShareLots([]); // Ensure it's always an array
     } finally {
       setLoading(false);
     }
@@ -306,7 +309,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
 
         {/* Share Lots List */}
         <div key={refreshKey} className="max-h-64 overflow-y-auto border rounded-md" style={{ borderColor: theme.colors.border }}>
-          {sortedShareLots.map((lot) => (
+          {(sortedShareLots || []).map((lot) => (
                           <div key={lot.id} className={`flex items-center space-x-3 p-3 border-b last:border-b-0 ${updatingLot === lot.id ? 'bg-yellow-50' : ''}`} style={{ borderColor: theme.colors.border }}>
                 <input
                   type="checkbox"
