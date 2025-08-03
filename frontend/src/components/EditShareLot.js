@@ -1,23 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useTheme } from '../contexts/ThemeContext';
+import { API_ENDPOINTS } from '../config/api';
 
 const EditShareLot = ({ lot, onClose, onUpdate }) => {
   const [formData, setFormData] = useState({
-    buy_date: lot.buy_date ? lot.buy_date.split('T')[0] : '',
-    buy_price_per_share: lot.buy_price_per_share || '',
-    shares: lot.shares || ''
+    shares: lot.shares,
+    buy_price_per_share: lot.buy_price_per_share,
+    buy_date: lot.buy_date.split('T')[0] // Convert to YYYY-MM-DD format
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const { theme } = useTheme();
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -27,11 +27,11 @@ const EditShareLot = ({ lot, onClose, onUpdate }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.put(`http://localhost:3001/api/share-lots/${lot.id}`, formData, {
+      const response = await axios.put(API_ENDPOINTS.EDIT_SHARE_LOT(lot.id), formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
-      onUpdate(response.data.updatedLot);
+      
+      onUpdate(response.data);
       onClose();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update share lot');

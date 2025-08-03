@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_ENDPOINTS } from '../config/api';
 
-const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
+const StockTransactionHistory = ({ stock, onClose }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -10,27 +11,29 @@ const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
   const [deleting, setDeleting] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'transaction_date', direction: 'desc' });
 
+  useEffect(() => {
+    fetchTransactions();
+  }, [stock]);
+
   const fetchTransactions = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3001/api/transactions', {
+      const response = await axios.get(API_ENDPOINTS.TRANSACTIONS, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       // Filter transactions for this specific stock
-      const stockTransactions = response.data.transactions.filter(
-        transaction => transaction.stock_id === stock.id
-      );
+      const stockTransactions = response.data.filter(t => t.stock_id === stock.id);
       setTransactions(stockTransactions);
+      setError('');
     } catch (err) {
       setError('Failed to load transactions');
+      console.error('Error fetching transactions:', err);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchTransactions();
-  }, [stock.id]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -87,9 +90,9 @@ const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
       setSelectedTransactions([]);
       
       // Refresh portfolio if callback provided
-      if (onPortfolioRefresh) {
-        onPortfolioRefresh();
-      }
+      // if (onPortfolioRefresh) {
+      //   onPortfolioRefresh();
+      // }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to delete transactions');
     } finally {

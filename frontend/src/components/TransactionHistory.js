@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_ENDPOINTS } from '../config/api';
 
 const TransactionHistory = ({ onClose }) => {
   const [transactions, setTransactions] = useState([]);
@@ -9,13 +10,17 @@ const TransactionHistory = ({ onClose }) => {
 
   const fetchTransactions = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3001/api/transactions', {
+      const response = await axios.get(API_ENDPOINTS.TRANSACTIONS, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setTransactions(response.data.transactions);
+      
+      setTransactions(response.data);
+      setError('');
     } catch (err) {
       setError('Failed to load transactions');
+      console.error('Error fetching transactions:', err);
     } finally {
       setLoading(false);
     }

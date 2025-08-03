@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { API_ENDPOINTS } from '../config/api';
 
 const AddStock = ({ onStockAdded }) => {
   const [stockName, setStockName] = useState('');
@@ -15,7 +16,7 @@ const AddStock = ({ onStockAdded }) => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post('http://localhost:3001/api/stocks', 
+      const response = await axios.post(API_ENDPOINTS.STOCKS, 
         { stock_name: stockName },
         { headers: { Authorization: `Bearer ${token}` } }
       );

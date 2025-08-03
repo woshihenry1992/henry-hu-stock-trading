@@ -11,6 +11,7 @@ import {
 } from 'chart.js';
 import axios from 'axios';
 import { useTheme } from '../contexts/ThemeContext';
+import { API_ENDPOINTS } from '../config/api';
 
 // Register Chart.js components
 ChartJS.register(
@@ -36,13 +37,13 @@ const EarningsChart = () => {
     yearOptions.push(year);
   }
 
-  const fetchEarningsData = async (year) => {
+  const fetchEarningsData = async () => {
     try {
       setLoading(true);
       setError(null);
       
       const token = localStorage.getItem('token');
-      const response = await axios.get(`http://localhost:3001/api/earnings/monthly?year=${year}`, {
+      const response = await axios.get(`${API_ENDPOINTS.EARNINGS}?year=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -56,7 +57,7 @@ const EarningsChart = () => {
   };
 
   useEffect(() => {
-    fetchEarningsData(selectedYear);
+    fetchEarningsData();
   }, [selectedYear]);
 
   const handleYearChange = (e) => {

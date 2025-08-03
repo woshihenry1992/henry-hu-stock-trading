@@ -5,6 +5,7 @@ import TransactionHistory from './TransactionHistory';
 import SellShares from './SellShares';
 import StockTransactionHistory from './StockTransactionHistory';
 import { useTheme } from '../contexts/ThemeContext';
+import { API_ENDPOINTS } from '../config/api';
 
 const Portfolio = () => {
   const [portfolio, setPortfolio] = useState([]);
@@ -20,13 +21,17 @@ const Portfolio = () => {
 
   const fetchPortfolio = async () => {
     try {
+      setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3001/api/portfolio', {
+      const response = await axios.get(API_ENDPOINTS.PORTFOLIO, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPortfolio(response.data.portfolio);
+      
+      setPortfolio(response.data);
+      setError('');
     } catch (err) {
       setError('Failed to load portfolio');
+      console.error('Error fetching portfolio:', err);
     } finally {
       setLoading(false);
     }

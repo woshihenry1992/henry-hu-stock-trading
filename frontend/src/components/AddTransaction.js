@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { API_ENDPOINTS } from '../config/api';
 
-const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
+const AddTransaction = ({ onTransactionAdded }) => {
+  const [stocks, setStocks] = useState([]);
   const [formData, setFormData] = useState({
-    transaction_type: 'buy', // Always buy
+    stock_id: '',
+    transaction_type: 'buy',
     shares: '',
-    price_per_share: '',
-    transaction_date: new Date().toISOString().split('T')[0] // Default to today
+    price_per_share: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [availableStocks, setAvailableStocks] = useState([]);
-  const [selectedStockId, setSelectedStockId] = useState(stock?.id || '');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     fetchStocks();
@@ -20,41 +21,12 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
   const fetchStocks = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('http://localhost:3001/api/stocks', {
+      const response = await axios.get(API_ENDPOINTS.STOCKS, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setAvailableStocks(response.data.stocks);
-      if (!selectedStockId && response.data.stocks.length > 0) {
-        setSelectedStockId(response.data.stocks[0].id);
-      }
+      setStocks(response.data);
     } catch (err) {
       setError('Failed to load stocks');
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post('http://localhost:3001/api/transactions', 
-        {
-          stock_id: selectedStockId,
-          transaction_type: 'buy', // Always buy
-          shares: parseInt(formData.shares),
-          price_per_share: parseFloat(formData.price_per_share),
-          transaction_date: new Date(formData.transaction_date).toISOString()
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      onTransactionAdded();
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to add transaction');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -63,6 +35,36 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
       ...formData,
       [e.target.name]: e.target.value
     });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post(API_ENDPOINTS.TRANSACTIONS,
+        formData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      setSuccess('Transaction added successfully!');
+      setFormData({
+        stock_id: '',
+        transaction_type: 'buy',
+        shares: '',
+        price_per_share: ''
+      });
+      if (onTransactionAdded) {
+        onTransactionAdded(response.data);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to add transaction');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
