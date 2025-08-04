@@ -598,7 +598,7 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
   const userId = req.user.userId;
 
   if (isProduction) {
-    // PostgreSQL version - fixed async handling
+    // PostgreSQL version - calculate actual_earned for each stock
     pgPool.query(`
       SELECT 
         s.id,
@@ -612,51 +612,49 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
       // For each stock, get the share lots data separately
       const portfolioPromises = result.rows.map(async (stock) => {
         try {
+          // Get current shares and total invested
           const shareLotsResult = await pgPool.query(`
             SELECT 
               COALESCE(SUM(shares), 0) as current_shares,
               COALESCE(SUM(shares * buy_price_per_share), 0) as total_invested_current
             FROM share_lots 
-            WHERE stock_id = $1 AND status = 'active'
-          `, [stock.id]);
-          
+            WHERE stock_id = $1 AND user_id = $2 AND status = 'active'
+          `, [stock.id, userId]);
           const shareData = shareLotsResult.rows[0];
-          // Convert string values to numbers
           const currentShares = parseFloat(shareData.current_shares) || 0;
           const totalInvested = parseFloat(shareData.total_invested_current) || 0;
           const avgBuyPrice = currentShares > 0 ? totalInvested / currentShares : 0;
-          
+
+          // Get actual earned (realized earnings from sold lots)
+          const earnedResult = await pgPool.query(`
+            SELECT 
+              COALESCE(SUM((sell_price_per_share - buy_price_per_share) * shares), 0) as actual_earned
+            FROM share_lots
+            WHERE stock_id = $1 AND user_id = $2 AND status = 'sold' AND sell_date IS NOT NULL
+          `, [stock.id, userId]);
+          const actualEarned = parseFloat(earnedResult.rows[0].actual_earned) || 0;
+
           return {
             ...stock,
             current_shares: parseInt(currentShares),
             avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
             total_invested: parseFloat(totalInvested.toFixed(2)),
-            actual_earned: 0 // Will be calculated when we add sell functionality
+            actual_earned: parseFloat(actualEarned.toFixed(2))
           };
         } catch (err) {
-          console.error(`Error getting share lots for stock ${stock.id}:`, err);
           return {
             ...stock,
             current_shares: 0,
             avg_buy_price: 0,
             total_invested: 0,
-            actual_earned: 0
+            actual_earned: 0,
+            error: err.message
           };
         }
       });
-
-      Promise.all(portfolioPromises)
-        .then(portfolio => {
-          console.log('Portfolio result:', portfolio); // Debug log
-          res.json(portfolio);
-        })
-        .catch(err => {
-          console.error('Portfolio calculation error:', err);
-          res.status(500).json({ error: 'Database error' });
-        });
+      Promise.all(portfolioPromises).then(portfolio => res.json(portfolio));
     })
     .catch(err => {
-      console.error('Portfolio query error:', err);
       res.status(500).json({ error: 'Database error' });
     });
   } else {
