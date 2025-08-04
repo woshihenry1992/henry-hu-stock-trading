@@ -495,7 +495,7 @@ app.get('/api/stocks/:stockId/share-lots', authenticateToken, (req, res) => {
 });
 
 // Sell specific share lots
-app.post('/api/stocks/:stockId/sell-lots', authenticateToken, (req, res) => {
+app.post('/api/stocks/:stockId/sell-lots', authenticateToken, async (req, res) => {
   const { stockId } = req.params;
   const { lotIds, sellPricePerShare, sellDate } = req.body;
   const userId = req.user.userId;
@@ -503,94 +503,149 @@ app.post('/api/stocks/:stockId/sell-lots', authenticateToken, (req, res) => {
   if (!lotIds || !Array.isArray(lotIds) || lotIds.length === 0) {
     return res.status(400).json({ error: 'Please select at least one lot to sell' });
   }
-
   if (!sellPricePerShare || sellPricePerShare <= 0) {
     return res.status(400).json({ error: 'Sell price must be positive' });
   }
-
   const sellDateValue = sellDate || new Date().toISOString();
 
-  // Verify stock belongs to user
-  db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
-    [stockId, userId], (err, stock) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (!stock) {
+  if (isProduction) {
+    // PostgreSQL version
+    const client = await pgPool.connect();
+    try {
+      await client.query('BEGIN');
+      // 1. Verify stock belongs to user
+      const stockResult = await client.query('SELECT * FROM stocks WHERE id = $1 AND user_id = $2', [stockId, userId]);
+      if (stockResult.rows.length === 0) {
+        await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Stock not found' });
       }
-
-      // Start transaction
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
-
-        // Get the share lots to sell
-        const placeholders = lotIds.map(() => '?').join(',');
-        db.all(`SELECT * FROM share_lots WHERE id IN (${placeholders}) AND user_id = ? AND stock_id = ? AND status = 'active'`, 
-          [...lotIds, userId, stockId], (err, lotsToSell) => {
-            if (err) {
-              db.run('ROLLBACK');
-              return res.status(500).json({ error: 'Database error' });
-            }
-
-            if (lotsToSell.length !== lotIds.length) {
-              db.run('ROLLBACK');
-              return res.status(400).json({ error: 'Some selected lots are not available for sale' });
-            }
-
-            // Calculate total shares and create sell transaction
-            const totalShares = lotsToSell.reduce((sum, lot) => sum + lot.shares, 0);
-            const totalAmount = totalShares * sellPricePerShare;
-
-            // Create sell transaction
-            db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
-              [userId, stockId, 'sell', totalShares, sellPricePerShare, totalAmount, sellDateValue], function(err) {
-                if (err) {
-                  db.run('ROLLBACK');
-                  return res.status(500).json({ error: 'Error creating sell transaction' });
-                }
-
-                const sellTransactionId = this.lastID;
-
-                // Update each lot as sold
-                const updatePromises = lotsToSell.map(lot => {
-                  return new Promise((resolve, reject) => {
-                    db.run('UPDATE share_lots SET sell_transaction_id = ?, sell_price_per_share = ?, sell_date = ?, status = ? WHERE id = ?', 
-                      [sellTransactionId, sellPricePerShare, sellDateValue, 'sold', lot.id], function(err) {
-                        if (err) reject(err);
-                        else resolve();
-                      });
-                  });
-                });
-
-                Promise.all(updatePromises)
-                  .then(() => {
-                    db.run('COMMIT');
-                    res.status(201).json({ 
-                      message: 'Shares sold successfully',
-                      transaction: {
-                        id: sellTransactionId,
-                        stock_id: stockId,
-                        transaction_type: 'sell',
-                        shares: totalShares,
-                        price_per_share: sellPricePerShare,
-                        total_amount: totalAmount,
-                        transaction_date: sellDateValue
-                      }
-                    });
-                  })
-                  .catch(err => {
-                    db.run('ROLLBACK');
-                    res.status(500).json({ error: 'Error updating share lots' });
-                  });
-              }
-            );
-          }
+      // 2. Fetch all lots to sell and check they are all active
+      const lotsResult = await client.query(
+        `SELECT * FROM share_lots WHERE id = ANY($1) AND user_id = $2 AND stock_id = $3 AND status = 'active'`,
+        [lotIds, userId, stockId]
+      );
+      if (lotsResult.rows.length !== lotIds.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Some selected lots are not available for sale' });
+      }
+      // 3. Calculate total shares
+      const totalShares = lotsResult.rows.reduce((sum, lot) => sum + Number(lot.shares), 0);
+      const totalAmount = totalShares * sellPricePerShare;
+      // 4. Create sell transaction
+      const txResult = await client.query(
+        `INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [userId, stockId, 'sell', totalShares, sellPricePerShare, totalAmount, sellDateValue]
+      );
+      const sellTransactionId = txResult.rows[0].id;
+      // 5. Update all selected lots as sold
+      for (const lot of lotsResult.rows) {
+        await client.query(
+          `UPDATE share_lots SET sell_transaction_id = $1, sell_price_per_share = $2, sell_date = $3, status = 'sold' WHERE id = $4`,
+          [sellTransactionId, sellPricePerShare, sellDateValue, lot.id]
         );
+      }
+      await client.query('COMMIT');
+      res.status(201).json({
+        message: 'Shares sold successfully',
+        transaction: {
+          id: sellTransactionId,
+          stock_id: stockId,
+          transaction_type: 'sell',
+          shares: totalShares,
+          price_per_share: sellPricePerShare,
+          total_amount: totalAmount,
+          transaction_date: sellDateValue
+        }
       });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      res.status(500).json({ error: 'Database error', details: err.message });
+    } finally {
+      client.release();
     }
-  );
+  } else {
+    // SQLite version
+    db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
+      [stockId, userId], (err, stock) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (!stock) {
+          return res.status(404).json({ error: 'Stock not found' });
+        }
+
+        // Start transaction
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+
+          // Get the share lots to sell
+          const placeholders = lotIds.map(() => '?').join(',');
+          db.all(`SELECT * FROM share_lots WHERE id IN (${placeholders}) AND user_id = ? AND stock_id = ? AND status = 'active'`, 
+            [...lotIds, userId, stockId], (err, lotsToSell) => {
+              if (err) {
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Database error' });
+              }
+
+              if (lotsToSell.length !== lotIds.length) {
+                db.run('ROLLBACK');
+                return res.status(400).json({ error: 'Some selected lots are not available for sale' });
+              }
+
+              // Calculate total shares and create sell transaction
+              const totalShares = lotsToSell.reduce((sum, lot) => sum + lot.shares, 0);
+              const totalAmount = totalShares * sellPricePerShare;
+
+              // Create sell transaction
+              db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+                [userId, stockId, 'sell', totalShares, sellPricePerShare, totalAmount, sellDateValue], function(err) {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    return res.status(500).json({ error: 'Error creating sell transaction' });
+                  }
+
+                  const sellTransactionId = this.lastID;
+
+                  // Update each lot as sold
+                  const updatePromises = lotsToSell.map(lot => {
+                    return new Promise((resolve, reject) => {
+                      db.run('UPDATE share_lots SET sell_transaction_id = ?, sell_price_per_share = ?, sell_date = ?, status = ? WHERE id = ?', 
+                        [sellTransactionId, sellPricePerShare, sellDateValue, 'sold', lot.id], function(err) {
+                          if (err) reject(err);
+                          else resolve();
+                        });
+                    });
+                  });
+
+                  Promise.all(updatePromises)
+                    .then(() => {
+                      db.run('COMMIT');
+                      res.status(201).json({ 
+                        message: 'Shares sold successfully',
+                        transaction: {
+                          id: sellTransactionId,
+                          stock_id: stockId,
+                          transaction_type: 'sell',
+                          shares: totalShares,
+                          price_per_share: sellPricePerShare,
+                          total_amount: totalAmount,
+                          transaction_date: sellDateValue
+                        }
+                      });
+                    })
+                    .catch(err => {
+                      db.run('ROLLBACK');
+                      res.status(500).json({ error: 'Error updating share lots' });
+                    });
+                }
+              );
+            }
+          );
+        });
+      }
+    );
+  }
 });
 
 // Get portfolio summary
