@@ -101,31 +101,46 @@ app.get('/api/test-connection', (req, res) => {
 app.post('/api/register', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
-
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Insert user
-    db.run('INSERT INTO users (username, password) VALUES (?, ?)', 
-      [username, hashedPassword], 
-      function(err) {
-        if (err) {
-          if (err.message.includes('UNIQUE constraint failed')) {
-            return res.status(400).json({ error: 'Username already exists' });
-          }
-          return res.status(500).json({ error: 'Error creating user' });
-        }
-        
-        res.status(201).json({ 
+    if (isProduction) {
+      // PostgreSQL version
+      try {
+        const result = await pgPool.query(
+          'INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id',
+          [username, hashedPassword]
+        );
+        res.status(201).json({
           message: 'User created successfully',
-          userId: this.lastID 
+          userId: result.rows[0].id
         });
+      } catch (err) {
+        if (err.code === '23505') { // unique_violation
+          return res.status(400).json({ error: 'Username already exists' });
+        }
+        return res.status(500).json({ error: 'Error creating user', details: err.message });
       }
-    );
+    } else {
+      // SQLite version
+      db.run('INSERT INTO users (username, password) VALUES (?, ?)',
+        [username, hashedPassword],
+        function(err) {
+          if (err) {
+            if (err.message.includes('UNIQUE constraint failed')) {
+              return res.status(400).json({ error: 'Username already exists' });
+            }
+            return res.status(500).json({ error: 'Error creating user' });
+          }
+          res.status(201).json({
+            message: 'User created successfully',
+            userId: this.lastID
+          });
+        }
+      );
+    }
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Server error' });
