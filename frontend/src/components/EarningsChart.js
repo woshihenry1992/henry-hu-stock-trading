@@ -43,15 +43,23 @@ const EarningsChart = () => {
       setError(null);
       
       const token = localStorage.getItem('token');
+      console.log('Token exists:', !!token);
+      console.log('Token length:', token ? token.length : 0);
       
       if (!token) {
         setError('Authentication token not found. Please log in again.');
         return;
       }
       
+      console.log('Making request to:', `${API_ENDPOINTS.EARNINGS}?year=${selectedYear}`);
+      console.log('API_BASE_URL:', process.env.REACT_APP_API_URL);
+      
       const response = await axios.get(`${API_ENDPOINTS.EARNINGS}?year=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
+      console.log('Response status:', response.status);
+      console.log('Response data:', response.data);
       
       // Check if response.data has the expected structure
       if (!response.data || typeof response.data !== 'object') {
@@ -67,9 +75,13 @@ const EarningsChart = () => {
         return;
       }
       
+      console.log('Setting earnings data:', response.data);
       setEarningsData(response.data);
     } catch (err) {
       console.error('Error fetching earnings data:', err);
+      console.error('Error response:', err.response);
+      console.error('Error message:', err.message);
+      
       if (err.response?.status === 401) {
         setError('Authentication failed. Please log in again.');
       } else if (err.response?.status === 403) {
