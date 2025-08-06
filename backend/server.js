@@ -1163,6 +1163,13 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       .then(debugResult => {
         console.log('Available years with data:', debugResult.rows);
         
+        // Add debug info to the response
+        const debugInfo = {
+          availableYears: debugResult.rows,
+          requestedYear: year,
+          totalEarnings: totalEarnings
+        };
+        
         // Now get monthly breakdown for the specific year
         return pgPool.query(`
           SELECT 
@@ -1207,7 +1214,8 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
         const response = { 
           year: parseInt(year),
           monthlyEarnings: completeYearData,
-          totalEarnings: parseFloat(totalEarnings.toFixed(2))
+          totalEarnings: parseFloat(totalEarnings.toFixed(2)),
+          debugInfo: debugInfo
         };
         
         console.log('Sending earnings response:', response);
