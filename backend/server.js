@@ -168,6 +168,7 @@ app.get('/api/debug-earnings', authenticateToken, (req, res) => {
         sl.buy_date,
         sl.sell_date,
         sl.status,
+        EXTRACT(YEAR FROM sl.sell_date) as sell_year,
         (sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares as earnings_per_lot
       FROM share_lots sl
       WHERE sl.user_id = $1 
@@ -180,10 +181,21 @@ app.get('/api/debug-earnings', authenticateToken, (req, res) => {
         return sum + parseFloat(row.earnings_per_lot || 0);
       }, 0);
       
+      // Group by year
+      const earningsByYear = {};
+      result.rows.forEach(row => {
+        const year = row.sell_year;
+        if (!earningsByYear[year]) {
+          earningsByYear[year] = 0;
+        }
+        earningsByYear[year] += parseFloat(row.earnings_per_lot || 0);
+      });
+      
       res.json({ 
         message: 'Debug earnings calculation',
         soldLots: result.rows,
         totalEarnings: totalEarnings,
+        earningsByYear: earningsByYear,
         userId: userId
       });
     })
@@ -1000,20 +1012,20 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       console.log('Total earnings query successful:', result.rows[0]);
       const totalEarnings = result.rows[0]?.total_earnings || 0;
       
-      // Now get monthly breakdown
+      // Now get monthly breakdown (without year filter first)
       return pgPool.query(`
         SELECT 
           EXTRACT(MONTH FROM sl.sell_date) as month,
+          EXTRACT(YEAR FROM sl.sell_date) as year,
           SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
           COUNT(*) as transactions_count
         FROM share_lots sl
         WHERE sl.user_id = $1 
           AND sl.status = 'sold'
           AND sl.sell_date IS NOT NULL
-          AND EXTRACT(YEAR FROM sl.sell_date) = $2
-        GROUP BY EXTRACT(MONTH FROM sl.sell_date)
-        ORDER BY month ASC
-      `, [userId, year])
+        GROUP BY EXTRACT(MONTH FROM sl.sell_date), EXTRACT(YEAR FROM sl.sell_date)
+        ORDER BY year DESC, month ASC
+      `, [userId])
       .then(monthlyResult => {
         console.log('Monthly earnings query successful, rows:', monthlyResult.rows.length);
         
@@ -1023,9 +1035,13 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
           'July', 'August', 'September', 'October', 'November', 'December'
         ];
 
+        // Filter data for the requested year
+        const yearData = monthlyResult.rows.filter(data => data.year == year);
+        console.log('Data for year', year, ':', yearData.length, 'rows');
+        
         const completeYearData = monthNames.map((monthName, index) => {
           const monthNumber = (index + 1).toString().padStart(2, '0');
-          const existingData = monthlyResult.rows.find(data => data.month.toString().padStart(2, '0') === monthNumber);
+          const existingData = yearData.find(data => data.month.toString().padStart(2, '0') === monthNumber);
           
           return {
             month: monthName,
