@@ -986,7 +986,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       return res.status(500).json({ error: 'Database connection not available' });
     }
     
-    // Try a simpler query first to test the connection
+    // Get total earnings first
     pgPool.query(`
       SELECT 
         COUNT(*) as total_sold_lots,
@@ -995,36 +995,55 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-        AND sl.sell_price_per_share IS NOT NULL
-        AND sl.buy_price_per_share IS NOT NULL
     `, [userId])
     .then(result => {
-      console.log('Simple earnings query successful:', result.rows[0]);
-      
-      // Create complete year data with all months (no data for now)
-      const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-      ];
-
-      const completeYearData = monthNames.map((monthName, index) => {
-        return {
-          month: monthName,
-          monthNumber: (index + 1).toString().padStart(2, '0'),
-          earnings: 0, // No monthly breakdown for now
-          transactions: 0
-        };
-      });
-
+      console.log('Total earnings query successful:', result.rows[0]);
       const totalEarnings = result.rows[0]?.total_earnings || 0;
-      const response = { 
-        year: parseInt(year),
-        monthlyEarnings: completeYearData,
-        totalEarnings: parseFloat(totalEarnings.toFixed(2))
-      };
       
-      console.log('Sending simplified earnings response:', response);
-      res.json(response);
+      // Now get monthly breakdown
+      return pgPool.query(`
+        SELECT 
+          EXTRACT(MONTH FROM sl.sell_date) as month,
+          SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+          COUNT(*) as transactions_count
+        FROM share_lots sl
+        WHERE sl.user_id = $1 
+          AND sl.status = 'sold'
+          AND sl.sell_date IS NOT NULL
+          AND EXTRACT(YEAR FROM sl.sell_date) = $2
+        GROUP BY EXTRACT(MONTH FROM sl.sell_date)
+        ORDER BY month ASC
+      `, [userId, year])
+      .then(monthlyResult => {
+        console.log('Monthly earnings query successful, rows:', monthlyResult.rows.length);
+        
+        // Create complete year data with all months
+        const monthNames = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+
+        const completeYearData = monthNames.map((monthName, index) => {
+          const monthNumber = (index + 1).toString().padStart(2, '0');
+          const existingData = monthlyResult.rows.find(data => data.month.toString().padStart(2, '0') === monthNumber);
+          
+          return {
+            month: monthName,
+            monthNumber: monthNumber,
+            earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
+            transactions: existingData ? existingData.transactions_count : 0
+          };
+        });
+
+        const response = { 
+          year: parseInt(year),
+          monthlyEarnings: completeYearData,
+          totalEarnings: parseFloat(totalEarnings.toFixed(2))
+        };
+        
+        console.log('Sending earnings response:', response);
+        res.json(response);
+      });
     })
     .catch(err => {
       console.error('Simple earnings query error:', err);
