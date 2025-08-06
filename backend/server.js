@@ -153,6 +153,101 @@ app.get('/api/test-share-lots', authenticateToken, (req, res) => {
   }
 });
 
+// Clean all data (DANGEROUS - only use for testing)
+app.delete('/api/clean-all-data', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  if (isProduction) {
+    // PostgreSQL version - clean all data
+    console.log('Cleaning all data for user:', userId);
+    
+    pgPool.query('BEGIN')
+      .then(() => {
+        // Delete in correct order to respect foreign keys
+        return pgPool.query('DELETE FROM share_lots WHERE user_id = $1', [userId]);
+      })
+      .then(() => {
+        return pgPool.query('DELETE FROM transactions WHERE user_id = $1', [userId]);
+      })
+      .then(() => {
+        return pgPool.query('DELETE FROM stocks WHERE user_id = $1', [userId]);
+      })
+      .then(() => {
+        return pgPool.query('DELETE FROM users WHERE id = $1', [userId]);
+      })
+      .then(() => {
+        return pgPool.query('COMMIT');
+      })
+      .then(() => {
+        console.log('All data cleaned successfully for user:', userId);
+        res.json({ 
+          message: 'All data cleaned successfully',
+          userId: userId
+        });
+      })
+      .catch(err => {
+        console.error('Error cleaning data:', err);
+        return pgPool.query('ROLLBACK')
+          .then(() => {
+            res.status(500).json({ 
+              error: 'Failed to clean data', 
+              details: err.message
+            });
+          });
+      });
+  } else {
+    // SQLite version
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      
+      db.run('DELETE FROM share_lots WHERE user_id = ?', [userId], (err) => {
+        if (err) {
+          console.error('Error deleting share_lots:', err);
+          db.run('ROLLBACK');
+          return res.status(500).json({ error: 'Failed to clean share_lots' });
+        }
+        
+        db.run('DELETE FROM transactions WHERE user_id = ?', [userId], (err) => {
+          if (err) {
+            console.error('Error deleting transactions:', err);
+            db.run('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to clean transactions' });
+          }
+          
+          db.run('DELETE FROM stocks WHERE user_id = ?', [userId], (err) => {
+            if (err) {
+              console.error('Error deleting stocks:', err);
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Failed to clean stocks' });
+            }
+            
+            db.run('DELETE FROM users WHERE id = ?', [userId], (err) => {
+              if (err) {
+                console.error('Error deleting user:', err);
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Failed to clean user' });
+              }
+              
+              db.run('COMMIT', (err) => {
+                if (err) {
+                  console.error('Error committing transaction:', err);
+                  return res.status(500).json({ error: 'Failed to commit cleanup' });
+                }
+                
+                console.log('All data cleaned successfully for user:', userId);
+                res.json({ 
+                  message: 'All data cleaned successfully',
+                  userId: userId
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+});
+
 // Debug earnings calculation
 app.get('/api/debug-earnings', authenticateToken, (req, res) => {
   const userId = req.user.userId;
