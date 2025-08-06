@@ -1094,6 +1094,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
     }
     
     // Get total earnings for the specific year
+    console.log('Running total earnings query with userId:', userId, 'year:', year);
     pgPool.query(`
       SELECT 
         COUNT(*) as total_sold_lots,
@@ -1108,21 +1109,41 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       console.log('Total earnings query successful:', result.rows[0]);
       const totalEarnings = result.rows[0]?.total_earnings || 0;
       
-      // Now get monthly breakdown for the specific year
+      // Debug: Check what years have data
       return pgPool.query(`
         SELECT 
-          EXTRACT(MONTH FROM sl.sell_date) as month,
-          SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
-          COUNT(*) as transactions_count
+          EXTRACT(YEAR FROM sl.sell_date) as year,
+          COUNT(*) as count,
+          SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as earnings
         FROM share_lots sl
         WHERE sl.user_id = $1 
           AND sl.status = 'sold'
           AND sl.sell_date IS NOT NULL
-          AND EXTRACT(YEAR FROM sl.sell_date) = $2
-        GROUP BY EXTRACT(MONTH FROM sl.sell_date)
-        ORDER BY month ASC
-      `, [userId, year])
-      .then(monthlyResult => {
+        GROUP BY EXTRACT(YEAR FROM sl.sell_date)
+        ORDER BY year DESC
+      `, [userId])
+      .then(debugResult => {
+        console.log('Available years with data:', debugResult.rows);
+        
+        // Now get monthly breakdown for the specific year
+        return pgPool.query(`
+          SELECT 
+            EXTRACT(MONTH FROM sl.sell_date) as month,
+            SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+            COUNT(*) as transactions_count
+          FROM share_lots sl
+          WHERE sl.user_id = $1 
+            AND sl.status = 'sold'
+            AND sl.sell_date IS NOT NULL
+            AND EXTRACT(YEAR FROM sl.sell_date) = $2
+          GROUP BY EXTRACT(MONTH FROM sl.sell_date)
+          ORDER BY month ASC
+        `, [userId, year])
+        .then(monthlyResult => {
+          return { totalEarnings, debugResult, monthlyResult };
+        });
+      })
+      .then(({ totalEarnings, debugResult, monthlyResult }) => {
         console.log('Monthly earnings query successful, rows:', monthlyResult.rows.length);
         
         // Create complete year data with all months
