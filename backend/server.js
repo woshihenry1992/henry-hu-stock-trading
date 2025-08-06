@@ -248,6 +248,41 @@ app.delete('/api/clean-all-data', authenticateToken, (req, res) => {
   }
 });
 
+// Test earnings query without year filter
+app.get('/api/test-earnings-no-year', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  if (isProduction) {
+    // Test query without year filter
+    pgPool.query(`
+      SELECT 
+        COUNT(*) as total_sold_lots,
+        COALESCE(SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares), 0) as total_earnings
+      FROM share_lots sl
+      WHERE sl.user_id = $1 
+        AND sl.status = 'sold'
+        AND sl.sell_date IS NOT NULL
+    `, [userId])
+    .then(result => {
+      res.json({ 
+        message: 'Test query without year filter',
+        result: result.rows[0],
+        userId: userId
+      });
+    })
+    .catch(err => {
+      console.error('Test query error:', err);
+      res.status(500).json({ 
+        error: 'Test query failed', 
+        details: err.message,
+        userId: userId
+      });
+    });
+  } else {
+    res.json({ error: 'Test endpoint only available in production' });
+  }
+});
+
 // Debug earnings calculation
 app.get('/api/debug-earnings', authenticateToken, (req, res) => {
   const userId = req.user.userId;
