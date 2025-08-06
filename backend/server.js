@@ -31,7 +31,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Initialize database
-initializeDatabase();
+    initializeDatabase();
 
 // JWT Secret (use environment variable in production)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -392,21 +392,21 @@ app.post('/api/register', async (req, res) => {
       }
     } else {
       // SQLite version
-      db.run('INSERT INTO users (username, password) VALUES (?, ?)',
-        [username, hashedPassword],
-        function(err) {
-          if (err) {
-            if (err.message.includes('UNIQUE constraint failed')) {
-              return res.status(400).json({ error: 'Username already exists' });
-            }
-            return res.status(500).json({ error: 'Error creating user' });
+    db.run('INSERT INTO users (username, password) VALUES (?, ?)', 
+      [username, hashedPassword], 
+      function(err) {
+        if (err) {
+          if (err.message.includes('UNIQUE constraint failed')) {
+            return res.status(400).json({ error: 'Username already exists' });
           }
-          res.status(201).json({
-            message: 'User created successfully',
-            userId: this.lastID
-          });
+          return res.status(500).json({ error: 'Error creating user' });
         }
-      );
+        res.status(201).json({ 
+          message: 'User created successfully',
+          userId: this.lastID 
+        });
+      }
+    );
     }
   } catch (error) {
     console.error('Registration error:', error);
@@ -514,15 +514,15 @@ app.get('/api/stocks', authenticateToken, (req, res) => {
       });
   } else {
     // SQLite version
-    db.all('SELECT * FROM stocks WHERE user_id = ? ORDER BY created_at DESC', 
-      [userId], (err, stocks) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        
-        res.json({ stocks });
+  db.all('SELECT * FROM stocks WHERE user_id = ? ORDER BY created_at DESC', 
+    [userId], (err, stocks) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
       }
-    );
+      
+      res.json({ stocks });
+    }
+  );
   }
 });
 
@@ -606,75 +606,75 @@ app.post('/api/transactions', authenticateToken, (req, res) => {
       });
   } else {
     // SQLite version
-    db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
-      [stock_id, userId], (err, stock) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        
-        if (!stock) {
-          return res.status(404).json({ error: 'Stock not found' });
-        }
-
-        // Start transaction
-        db.serialize(() => {
-          db.run('BEGIN TRANSACTION');
-
-          // Insert transaction
-          db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
-            [userId, stock_id, transaction_type, shares, price_per_share, total_amount, date], function(err) {
-              if (err) {
-                db.run('ROLLBACK');
-                return res.status(500).json({ error: 'Error creating transaction' });
-              }
-
-              const transactionId = this.lastID;
-
-              // If it's a buy transaction, create share lots
-              if (transaction_type === 'buy') {
-                db.run('INSERT INTO share_lots (user_id, stock_id, buy_transaction_id, shares, buy_price_per_share, buy_date) VALUES (?, ?, ?, ?, ?, ?)', 
-                  [userId, stock_id, transactionId, shares, price_per_share, date], function(err) {
-                    if (err) {
-                      db.run('ROLLBACK');
-                      return res.status(500).json({ error: 'Error creating share lots' });
-                    }
-
-                    db.run('COMMIT');
-                    res.status(201).json({ 
-                      message: 'Transaction created successfully',
-                      transaction: {
-                        id: transactionId,
-                        stock_id,
-                        transaction_type,
-                        shares,
-                        price_per_share,
-                        total_amount,
-                        transaction_date: date
-                      }
-                    });
-                  }
-                );
-              } else {
-                // For sell transactions, just commit the transaction
-                db.run('COMMIT');
-                res.status(201).json({ 
-                  message: 'Transaction created successfully',
-                  transaction: {
-                    id: transactionId,
-                    stock_id,
-                    transaction_type,
-                    shares,
-                    price_per_share,
-                    total_amount,
-                    transaction_date: date
-                  }
-                });
-              }
-            }
-          );
-        });
+  db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
+    [stock_id, userId], (err, stock) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
       }
-    );
+      
+      if (!stock) {
+        return res.status(404).json({ error: 'Stock not found' });
+      }
+
+      // Start transaction
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // Insert transaction
+        db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+          [userId, stock_id, transaction_type, shares, price_per_share, total_amount, date], function(err) {
+            if (err) {
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Error creating transaction' });
+            }
+
+            const transactionId = this.lastID;
+
+            // If it's a buy transaction, create share lots
+            if (transaction_type === 'buy') {
+              db.run('INSERT INTO share_lots (user_id, stock_id, buy_transaction_id, shares, buy_price_per_share, buy_date) VALUES (?, ?, ?, ?, ?, ?)', 
+                [userId, stock_id, transactionId, shares, price_per_share, date], function(err) {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    return res.status(500).json({ error: 'Error creating share lots' });
+                  }
+
+                  db.run('COMMIT');
+                  res.status(201).json({ 
+                    message: 'Transaction created successfully',
+                    transaction: {
+                      id: transactionId,
+                      stock_id,
+                      transaction_type,
+                      shares,
+                      price_per_share,
+                      total_amount,
+                      transaction_date: date
+                    }
+                  });
+                }
+              );
+            } else {
+              // For sell transactions, just commit the transaction
+              db.run('COMMIT');
+              res.status(201).json({ 
+                message: 'Transaction created successfully',
+                transaction: {
+                  id: transactionId,
+                  stock_id,
+                  transaction_type,
+                  shares,
+                  price_per_share,
+                  total_amount,
+                  transaction_date: date
+                }
+              });
+            }
+          }
+        );
+      });
+    }
+  );
   }
 });
 
@@ -847,86 +847,86 @@ app.post('/api/stocks/:stockId/sell-lots', authenticateToken, async (req, res) =
     }
   } else {
     // SQLite version
-    db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
-      [stockId, userId], (err, stock) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        
-        if (!stock) {
-          return res.status(404).json({ error: 'Stock not found' });
-        }
-
-        // Start transaction
-        db.serialize(() => {
-          db.run('BEGIN TRANSACTION');
-
-          // Get the share lots to sell
-          const placeholders = lotIds.map(() => '?').join(',');
-          db.all(`SELECT * FROM share_lots WHERE id IN (${placeholders}) AND user_id = ? AND stock_id = ? AND status = 'active'`, 
-            [...lotIds, userId, stockId], (err, lotsToSell) => {
-              if (err) {
-                db.run('ROLLBACK');
-                return res.status(500).json({ error: 'Database error' });
-              }
-
-              if (lotsToSell.length !== lotIds.length) {
-                db.run('ROLLBACK');
-                return res.status(400).json({ error: 'Some selected lots are not available for sale' });
-              }
-
-              // Calculate total shares and create sell transaction
-              const totalShares = lotsToSell.reduce((sum, lot) => sum + lot.shares, 0);
-              const totalAmount = totalShares * sellPricePerShare;
-
-              // Create sell transaction
-              db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
-                [userId, stockId, 'sell', totalShares, sellPricePerShare, totalAmount, sellDateValue], function(err) {
-                  if (err) {
-                    db.run('ROLLBACK');
-                    return res.status(500).json({ error: 'Error creating sell transaction' });
-                  }
-
-                  const sellTransactionId = this.lastID;
-
-                  // Update each lot as sold
-                  const updatePromises = lotsToSell.map(lot => {
-                    return new Promise((resolve, reject) => {
-                      db.run('UPDATE share_lots SET sell_transaction_id = ?, sell_price_per_share = ?, sell_date = ?, status = ? WHERE id = ?', 
-                        [sellTransactionId, sellPricePerShare, sellDateValue, 'sold', lot.id], function(err) {
-                          if (err) reject(err);
-                          else resolve();
-                        });
-                    });
-                  });
-
-                  Promise.all(updatePromises)
-                    .then(() => {
-                      db.run('COMMIT');
-                      res.status(201).json({ 
-                        message: 'Shares sold successfully',
-                        transaction: {
-                          id: sellTransactionId,
-                          stock_id: stockId,
-                          transaction_type: 'sell',
-                          shares: totalShares,
-                          price_per_share: sellPricePerShare,
-                          total_amount: totalAmount,
-                          transaction_date: sellDateValue
-                        }
-                      });
-                    })
-                    .catch(err => {
-                      db.run('ROLLBACK');
-                      res.status(500).json({ error: 'Error updating share lots' });
-                    });
-                }
-              );
-            }
-          );
-        });
+  db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
+    [stockId, userId], (err, stock) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
       }
-    );
+      
+      if (!stock) {
+        return res.status(404).json({ error: 'Stock not found' });
+      }
+
+      // Start transaction
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+
+        // Get the share lots to sell
+        const placeholders = lotIds.map(() => '?').join(',');
+        db.all(`SELECT * FROM share_lots WHERE id IN (${placeholders}) AND user_id = ? AND stock_id = ? AND status = 'active'`, 
+          [...lotIds, userId, stockId], (err, lotsToSell) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Database error' });
+            }
+
+            if (lotsToSell.length !== lotIds.length) {
+              db.run('ROLLBACK');
+              return res.status(400).json({ error: 'Some selected lots are not available for sale' });
+            }
+
+            // Calculate total shares and create sell transaction
+            const totalShares = lotsToSell.reduce((sum, lot) => sum + lot.shares, 0);
+            const totalAmount = totalShares * sellPricePerShare;
+
+            // Create sell transaction
+            db.run('INSERT INTO transactions (user_id, stock_id, transaction_type, shares, price_per_share, total_amount, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?)', 
+              [userId, stockId, 'sell', totalShares, sellPricePerShare, totalAmount, sellDateValue], function(err) {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return res.status(500).json({ error: 'Error creating sell transaction' });
+                }
+
+                const sellTransactionId = this.lastID;
+
+                // Update each lot as sold
+                const updatePromises = lotsToSell.map(lot => {
+                  return new Promise((resolve, reject) => {
+                    db.run('UPDATE share_lots SET sell_transaction_id = ?, sell_price_per_share = ?, sell_date = ?, status = ? WHERE id = ?', 
+                      [sellTransactionId, sellPricePerShare, sellDateValue, 'sold', lot.id], function(err) {
+                        if (err) reject(err);
+                        else resolve();
+                      });
+                  });
+                });
+
+                Promise.all(updatePromises)
+                  .then(() => {
+                    db.run('COMMIT');
+                    res.status(201).json({ 
+                      message: 'Shares sold successfully',
+                      transaction: {
+                        id: sellTransactionId,
+                        stock_id: stockId,
+                        transaction_type: 'sell',
+                        shares: totalShares,
+                        price_per_share: sellPricePerShare,
+                        total_amount: totalAmount,
+                        transaction_date: sellDateValue
+                      }
+                    });
+                  })
+                  .catch(err => {
+                    db.run('ROLLBACK');
+                    res.status(500).json({ error: 'Error updating share lots' });
+                  });
+              }
+            );
+          }
+        );
+      });
+    }
+  );
   }
 });
 
@@ -996,20 +996,20 @@ app.get('/api/portfolio', authenticateToken, (req, res) => {
     });
   } else {
     // SQLite version - simplified for development
-    db.all(`
-      SELECT 
-        s.id,
-        s.stock_name,
-        s.created_at,
+  db.all(`
+    SELECT 
+      s.id,
+      s.stock_name,
+      s.created_at,
         0 as current_shares,
         0 as avg_buy_price,
         0 as total_invested,
         0 as actual_earned
-      FROM stocks s
-      WHERE s.user_id = ?
-      ORDER BY s.created_at DESC
+    FROM stocks s
+    WHERE s.user_id = ?
+    ORDER BY s.created_at DESC
     `, [userId], (err, portfolio) => {
-      if (err) {
+    if (err) {
         return res.status(500).json({ error: err.message });
       }
       res.json(portfolio);
@@ -1083,7 +1083,7 @@ app.get('/api/test-portfolio-calculation', authenticateToken, (req, res) => {
         const avgBuyPrice = currentShares > 0 ? totalInvested / currentShares : 0;
         
         const portfolioItem = {
-          ...stock,
+        ...stock,
           current_shares: parseInt(currentShares),
           avg_buy_price: parseFloat(avgBuyPrice.toFixed(2)),
           total_invested: parseFloat(totalInvested.toFixed(2)),
@@ -1128,21 +1128,40 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       return res.status(500).json({ error: 'Database connection not available' });
     }
     
-    // Get total earnings for the specific year
+    // Get total earnings for the specific year - TEMPORARY FIX
             console.log('Running total earnings query with userId:', userId, 'year:', year, 'DEPLOYMENT TEST');
+    
+    // First get all earnings and filter by year in JavaScript as fallback
     pgPool.query(`
       SELECT 
-        COUNT(*) as total_sold_lots,
-        COALESCE(SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares), 0) as total_earnings
+        sl.shares,
+        sl.buy_price_per_share,
+        sl.sell_price_per_share,
+        sl.sell_date,
+        EXTRACT(YEAR FROM sl.sell_date) as sell_year,
+        (sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares as earnings_per_lot
       FROM share_lots sl
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-        AND EXTRACT(YEAR FROM sl.sell_date) = $2
-    `, [userId, year])
+    `, [userId])
     .then(result => {
-      console.log('Total earnings query successful:', result.rows[0]);
-      const totalEarnings = result.rows[0]?.total_earnings || 0;
+      console.log('All earnings query successful, rows:', result.rows.length);
+      
+      // Filter by year in JavaScript and calculate total
+      const yearFilteredRows = result.rows.filter(row => {
+        const rowYear = parseInt(row.sell_year);
+        console.log('Row year:', rowYear, 'Target year:', year, 'Match:', rowYear === year);
+        return rowYear === year;
+      });
+      
+      console.log('Year filtered rows:', yearFilteredRows.length);
+      
+      const totalEarnings = yearFilteredRows.reduce((sum, row) => {
+        return sum + parseFloat(row.earnings_per_lot || 0);
+      }, 0);
+      
+      console.log('Calculated total earnings for year', year, ':', totalEarnings);
       
       // Debug: Check what years have data
       return pgPool.query(`
@@ -1288,49 +1307,49 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
     // SQLite version
     console.log('Earnings query - Development mode, userId:', userId, 'year:', year);
     
-    db.all(`
-      SELECT 
-        strftime('%m', sl.sell_date) as month,
-        strftime('%Y', sl.sell_date) as year,
-        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
-        COUNT(*) as transactions_count
-      FROM share_lots sl
-      WHERE sl.user_id = ? 
-        AND sl.status = 'sold'
+  db.all(`
+    SELECT 
+      strftime('%m', sl.sell_date) as month,
+      strftime('%Y', sl.sell_date) as year,
+      SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+      COUNT(*) as transactions_count
+    FROM share_lots sl
+    WHERE sl.user_id = ? 
+      AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-        AND strftime('%Y', sl.sell_date) = ?
-      GROUP BY strftime('%m', sl.sell_date), strftime('%Y', sl.sell_date)
-      ORDER BY month ASC
-    `, [userId, year.toString()], (err, monthlyData) => {
-      if (err) {
+      AND strftime('%Y', sl.sell_date) = ?
+    GROUP BY strftime('%m', sl.sell_date), strftime('%Y', sl.sell_date)
+    ORDER BY month ASC
+  `, [userId, year.toString()], (err, monthlyData) => {
+    if (err) {
         console.error('SQLite earnings query error:', err);
         return res.status(500).json({ error: 'Database error', details: err.message });
-      }
+    }
 
       console.log('SQLite earnings query successful, rows:', monthlyData.length);
 
-      // Create complete year data with all months
-      const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-      ];
+    // Create complete year data with all months
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
 
-      const completeYearData = monthNames.map((monthName, index) => {
-        const monthNumber = (index + 1).toString().padStart(2, '0');
-        const existingData = monthlyData.find(data => data.month === monthNumber);
-        
-        return {
-          month: monthName,
-          monthNumber: monthNumber,
-          earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
-          transactions: existingData ? existingData.transactions_count : 0
-        };
-      });
+    const completeYearData = monthNames.map((monthName, index) => {
+      const monthNumber = (index + 1).toString().padStart(2, '0');
+      const existingData = monthlyData.find(data => data.month === monthNumber);
+      
+      return {
+        month: monthName,
+        monthNumber: monthNumber,
+        earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
+        transactions: existingData ? existingData.transactions_count : 0
+      };
+    });
 
       const response = { 
-        year: parseInt(year),
-        monthlyEarnings: completeYearData,
-        totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
+      year: parseInt(year),
+      monthlyEarnings: completeYearData,
+      totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
       };
       
       console.log('Sending SQLite earnings response:', response);
@@ -1594,4 +1613,4 @@ process.on('SIGINT', () => {
     }
     process.exit(0);
   });
-});
+}); 
