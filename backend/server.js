@@ -1129,7 +1129,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
     }
     
     // Get total earnings for the specific year
-    console.log('Running total earnings query with userId:', userId, 'year:', year);
+            console.log('Running total earnings query with userId:', userId, 'year:', year, 'DEPLOYMENT TEST');
     pgPool.query(`
       SELECT 
         COUNT(*) as total_sold_lots,
