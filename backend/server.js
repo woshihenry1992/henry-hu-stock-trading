@@ -1147,15 +1147,18 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       // Debug: Check what years have data
       return pgPool.query(`
         SELECT 
+          sl.sell_date,
           EXTRACT(YEAR FROM sl.sell_date) as year,
+          EXTRACT(YEAR FROM sl.sell_date)::text as year_text,
           COUNT(*) as count,
           SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as earnings
         FROM share_lots sl
         WHERE sl.user_id = $1 
           AND sl.status = 'sold'
           AND sl.sell_date IS NOT NULL
-        GROUP BY EXTRACT(YEAR FROM sl.sell_date)
+        GROUP BY sl.sell_date, EXTRACT(YEAR FROM sl.sell_date)
         ORDER BY year DESC
+        LIMIT 5
       `, [userId])
       .then(debugResult => {
         console.log('Available years with data:', debugResult.rows);
