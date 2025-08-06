@@ -60,6 +60,8 @@ const EarningsChart = () => {
       
       console.log('Response status:', response.status);
       console.log('Response data:', response.data);
+      console.log('Response data type:', typeof response.data);
+      console.log('Response data keys:', Object.keys(response.data));
       
       // Check if response.data has the expected structure
       if (!response.data || typeof response.data !== 'object') {
@@ -71,11 +73,15 @@ const EarningsChart = () => {
       // Validate the expected properties
       if (!response.data.monthlyEarnings || !Array.isArray(response.data.monthlyEarnings)) {
         console.error('Missing or invalid monthlyEarnings data:', response.data);
+        console.error('monthlyEarnings type:', typeof response.data.monthlyEarnings);
+        console.error('monthlyEarnings is array:', Array.isArray(response.data.monthlyEarnings));
         setError('Invalid earnings data format from server');
         return;
       }
       
       console.log('Setting earnings data:', response.data);
+      console.log('Total earnings:', response.data.totalEarnings);
+      console.log('Monthly earnings count:', response.data.monthlyEarnings.length);
       setEarningsData(response.data);
     } catch (err) {
       console.error('Error fetching earnings data:', err);
