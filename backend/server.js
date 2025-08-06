@@ -153,6 +153,75 @@ app.get('/api/test-share-lots', authenticateToken, (req, res) => {
   }
 });
 
+// Debug earnings calculation
+app.get('/api/debug-earnings', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  if (isProduction) {
+    // Get detailed information about sold shares
+    pgPool.query(`
+      SELECT 
+        sl.id,
+        sl.shares,
+        sl.buy_price_per_share,
+        sl.sell_price_per_share,
+        sl.buy_date,
+        sl.sell_date,
+        sl.status,
+        (sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares as earnings_per_lot
+      FROM share_lots sl
+      WHERE sl.user_id = $1 
+        AND sl.status = 'sold'
+        AND sl.sell_date IS NOT NULL
+      ORDER BY sl.sell_date DESC
+    `, [userId])
+    .then(result => {
+      const totalEarnings = result.rows.reduce((sum, row) => {
+        return sum + parseFloat(row.earnings_per_lot || 0);
+      }, 0);
+      
+      res.json({ 
+        message: 'Debug earnings calculation',
+        soldLots: result.rows,
+        totalEarnings: totalEarnings,
+        userId: userId
+      });
+    })
+    .catch(err => {
+      console.error('Debug earnings query error:', err);
+      res.status(500).json({ 
+        error: 'Debug earnings query failed', 
+        details: err.message,
+        userId: userId
+      });
+    });
+  } else {
+    // SQLite version
+    db.get(`
+      SELECT 
+        COUNT(*) as total_lots,
+        COUNT(CASE WHEN status = 'sold' THEN 1 END) as sold_lots,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_lots
+      FROM share_lots 
+      WHERE user_id = ?
+    `, [userId], (err, result) => {
+      if (err) {
+        console.error('SQLite share_lots table test error:', err);
+        return res.status(500).json({ 
+          error: 'Share_lots table test failed', 
+          details: err.message,
+          userId: userId
+        });
+      }
+      res.json({ 
+        message: 'Share_lots table test successful',
+        data: result,
+        userId: userId
+      });
+    });
+  }
+});
+
 // User registration
 app.post('/api/register', async (req, res) => {
   try {
