@@ -19,17 +19,41 @@ const StockTransactionHistory = ({ stock, onClose }) => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Authentication token not found. Please log in again.');
+        return;
+      }
+      
       const response = await axios.get(API_ENDPOINTS.TRANSACTIONS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
+      // Check if response.data is an array or has a transactions property
+      let transactionsData;
+      if (Array.isArray(response.data)) {
+        transactionsData = response.data;
+      } else if (response.data && Array.isArray(response.data.transactions)) {
+        transactionsData = response.data.transactions;
+      } else {
+        console.error('Unexpected response format:', response.data);
+        setError('Invalid response format from server');
+        return;
+      }
+      
       // Filter transactions for this specific stock
-      const stockTransactions = response.data.filter(t => t.stock_id === stock.id);
+      const stockTransactions = transactionsData.filter(t => t.stock_id === stock.id);
       setTransactions(stockTransactions);
       setError('');
     } catch (err) {
-      setError('Failed to load transactions');
       console.error('Error fetching transactions:', err);
+      if (err.response?.status === 401) {
+        setError('Authentication failed. Please log in again.');
+      } else if (err.response?.status === 403) {
+        setError('Access denied. Please check your permissions.');
+      } else {
+        setError('Failed to load transactions. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -80,7 +104,7 @@ const StockTransactionHistory = ({ stock, onClose }) => {
     setDeleting(true);
     try {
       const token = localStorage.getItem('token');
-      await axios.delete('http://localhost:3001/api/transactions', {
+      await axios.delete(API_ENDPOINTS.DELETE_TRANSACTIONS, {
         headers: { Authorization: `Bearer ${token}` },
         data: { transactionIds: selectedTransactions }
       });

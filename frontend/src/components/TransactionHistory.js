@@ -21,7 +21,13 @@ const TransactionHistory = ({ onClose }) => {
       setTransactions(transactionsData);
       setError('');
     } catch (err) {
-      setError('Failed to load transactions');
+      let errorMsg = 'Failed to load transactions';
+      if (err.response && err.response.data && err.response.data.error) {
+        errorMsg += ': ' + err.response.data.error;
+      } else if (err.message) {
+        errorMsg += ': ' + err.message;
+      }
+      setError(errorMsg);
       console.error('Error fetching transactions:', err);
       setTransactions([]); // Ensure it's always an array
     } finally {
