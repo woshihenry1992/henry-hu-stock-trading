@@ -851,6 +851,14 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
 
   if (isProduction) {
     // PostgreSQL version - fixed to use pgPool.query and handle null sell_date
+    console.log('Earnings query - Production mode, userId:', userId, 'year:', year);
+    
+    // First, check if pgPool is available
+    if (!pgPool) {
+      console.error('pgPool not initialized');
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+    
     pgPool.query(`
       SELECT 
         EXTRACT(MONTH FROM sl.sell_date) as month,
@@ -866,6 +874,8 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       ORDER BY month ASC
     `, [userId, year])
     .then(result => {
+      console.log('Earnings query successful, rows:', result.rows.length);
+      
       // Create complete year data with all months
       const monthNames = [
         'January', 'February', 'March', 'April', 'May', 'June',
@@ -884,18 +894,25 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
         };
       });
 
-      res.json({ 
+      const response = { 
         year: parseInt(year),
         monthlyEarnings: completeYearData,
         totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
-      });
+      };
+      
+      console.log('Sending earnings response:', response);
+      res.json(response);
     })
     .catch(err => {
       console.error('Earnings query error:', err);
-      res.status(500).json({ error: 'Database error' });
+      console.error('Error details:', err.message);
+      console.error('Error stack:', err.stack);
+      res.status(500).json({ error: 'Database error', details: err.message });
     });
   } else {
     // SQLite version
+    console.log('Earnings query - Development mode, userId:', userId, 'year:', year);
+    
     db.all(`
       SELECT 
         strftime('%m', sl.sell_date) as month,
@@ -911,8 +928,11 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       ORDER BY month ASC
     `, [userId, year.toString()], (err, monthlyData) => {
       if (err) {
-        return res.status(500).json({ error: 'Database error' });
+        console.error('SQLite earnings query error:', err);
+        return res.status(500).json({ error: 'Database error', details: err.message });
       }
+
+      console.log('SQLite earnings query successful, rows:', monthlyData.length);
 
       // Create complete year data with all months
       const monthNames = [
@@ -932,11 +952,14 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
         };
       });
 
-      res.json({ 
+      const response = { 
         year: parseInt(year),
         monthlyEarnings: completeYearData,
         totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
-      });
+      };
+      
+      console.log('Sending SQLite earnings response:', response);
+      res.json(response);
     });
   }
 });
