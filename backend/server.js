@@ -998,7 +998,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       return res.status(500).json({ error: 'Database connection not available' });
     }
     
-    // Get total earnings first
+    // Get total earnings for the specific year
     pgPool.query(`
       SELECT 
         COUNT(*) as total_sold_lots,
@@ -1007,25 +1007,26 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-    `, [userId])
+        AND EXTRACT(YEAR FROM sl.sell_date) = $2
+    `, [userId, year])
     .then(result => {
       console.log('Total earnings query successful:', result.rows[0]);
       const totalEarnings = result.rows[0]?.total_earnings || 0;
       
-      // Now get monthly breakdown (without year filter first)
+      // Now get monthly breakdown for the specific year
       return pgPool.query(`
         SELECT 
           EXTRACT(MONTH FROM sl.sell_date) as month,
-          EXTRACT(YEAR FROM sl.sell_date) as year,
           SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
           COUNT(*) as transactions_count
         FROM share_lots sl
         WHERE sl.user_id = $1 
           AND sl.status = 'sold'
           AND sl.sell_date IS NOT NULL
-        GROUP BY EXTRACT(MONTH FROM sl.sell_date), EXTRACT(YEAR FROM sl.sell_date)
-        ORDER BY year DESC, month ASC
-      `, [userId])
+          AND EXTRACT(YEAR FROM sl.sell_date) = $2
+        GROUP BY EXTRACT(MONTH FROM sl.sell_date)
+        ORDER BY month ASC
+      `, [userId, year])
       .then(monthlyResult => {
         console.log('Monthly earnings query successful, rows:', monthlyResult.rows.length);
         
@@ -1035,13 +1036,11 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
           'July', 'August', 'September', 'October', 'November', 'December'
         ];
 
-        // Filter data for the requested year
-        const yearData = monthlyResult.rows.filter(data => data.year == year);
-        console.log('Data for year', year, ':', yearData.length, 'rows');
+        console.log('Monthly data for year', year, ':', monthlyResult.rows.length, 'rows');
         
         const completeYearData = monthNames.map((monthName, index) => {
           const monthNumber = (index + 1).toString().padStart(2, '0');
-          const existingData = yearData.find(data => data.month.toString().padStart(2, '0') === monthNumber);
+          const existingData = monthlyResult.rows.find(data => data.month.toString().padStart(2, '0') === monthNumber);
           
           return {
             month: monthName,
