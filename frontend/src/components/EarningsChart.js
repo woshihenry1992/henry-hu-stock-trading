@@ -43,14 +43,42 @@ const EarningsChart = () => {
       setError(null);
       
       const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Authentication token not found. Please log in again.');
+        return;
+      }
+      
       const response = await axios.get(`${API_ENDPOINTS.EARNINGS}?year=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
+      // Check if response.data has the expected structure
+      if (!response.data || typeof response.data !== 'object') {
+        console.error('Unexpected response format:', response.data);
+        setError('Invalid response format from server');
+        return;
+      }
+      
+      // Validate the expected properties
+      if (!response.data.monthlyEarnings || !Array.isArray(response.data.monthlyEarnings)) {
+        console.error('Missing or invalid monthlyEarnings data:', response.data);
+        setError('Invalid earnings data format from server');
+        return;
+      }
+      
       setEarningsData(response.data);
     } catch (err) {
-      setError('Failed to load earnings data');
       console.error('Error fetching earnings data:', err);
+      if (err.response?.status === 401) {
+        setError('Authentication failed. Please log in again.');
+      } else if (err.response?.status === 403) {
+        setError('Access denied. Please check your permissions.');
+      } else if (err.response?.status === 404) {
+        setError('Earnings data not found for the selected year.');
+      } else {
+        setError('Failed to load earnings data. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
