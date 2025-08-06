@@ -1079,9 +1079,9 @@ app.get('/api/test-portfolio-calculation', authenticateToken, (req, res) => {
 // Get monthly earnings data for charts
 app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const userId = req.user.userId;
-  const year = req.query.year || new Date().getFullYear();
+  const year = parseInt(req.query.year) || new Date().getFullYear();
 
-  console.log('Earnings query - userId:', userId, 'year:', year, 'isProduction:', isProduction);
+  console.log('Earnings query - userId:', userId, 'year:', year, 'year type:', typeof year, 'isProduction:', isProduction);
 
   if (isProduction) {
     // PostgreSQL version - simplified query first
