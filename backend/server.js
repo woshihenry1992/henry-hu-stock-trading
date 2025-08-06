@@ -97,6 +97,62 @@ app.get('/api/test-connection', (req, res) => {
   }
 });
 
+// Test share_lots table
+app.get('/api/test-share-lots', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  if (isProduction) {
+    // Test if share_lots table exists and has data
+    pgPool.query(`
+      SELECT 
+        COUNT(*) as total_lots,
+        COUNT(CASE WHEN status = 'sold' THEN 1 END) as sold_lots,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_lots
+      FROM share_lots 
+      WHERE user_id = $1
+    `, [userId])
+    .then(result => {
+      res.json({ 
+        message: 'Share_lots table test successful',
+        data: result.rows[0],
+        userId: userId
+      });
+    })
+    .catch(err => {
+      console.error('Share_lots table test error:', err);
+      res.status(500).json({ 
+        error: 'Share_lots table test failed', 
+        details: err.message,
+        userId: userId
+      });
+    });
+  } else {
+    // SQLite version
+    db.get(`
+      SELECT 
+        COUNT(*) as total_lots,
+        COUNT(CASE WHEN status = 'sold' THEN 1 END) as sold_lots,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_lots
+      FROM share_lots 
+      WHERE user_id = ?
+    `, [userId], (err, result) => {
+      if (err) {
+        console.error('SQLite share_lots table test error:', err);
+        return res.status(500).json({ 
+          error: 'Share_lots table test failed', 
+          details: err.message,
+          userId: userId
+        });
+      }
+      res.json({ 
+        message: 'Share_lots table test successful',
+        data: result,
+        userId: userId
+      });
+    });
+  }
+});
+
 // User registration
 app.post('/api/register', async (req, res) => {
   try {
@@ -849,8 +905,10 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
   const userId = req.user.userId;
   const year = req.query.year || new Date().getFullYear();
 
+  console.log('Earnings query - userId:', userId, 'year:', year, 'isProduction:', isProduction);
+
   if (isProduction) {
-    // PostgreSQL version - fixed to use pgPool.query and handle null sell_date
+    // PostgreSQL version - simplified query first
     console.log('Earnings query - Production mode, userId:', userId, 'year:', year);
     
     // First, check if pgPool is available
@@ -859,52 +917,46 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       return res.status(500).json({ error: 'Database connection not available' });
     }
     
+    // Try a simpler query first to test the connection
     pgPool.query(`
       SELECT 
-        EXTRACT(MONTH FROM sl.sell_date) as month,
-        EXTRACT(YEAR FROM sl.sell_date) as year,
-        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
-        COUNT(*) as transactions_count
+        COUNT(*) as total_sold_lots,
+        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as total_earnings
       FROM share_lots sl
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-        AND EXTRACT(YEAR FROM sl.sell_date) = $2
-      GROUP BY EXTRACT(MONTH FROM sl.sell_date), EXTRACT(YEAR FROM sl.sell_date)
-      ORDER BY month ASC
-    `, [userId, year])
+    `, [userId])
     .then(result => {
-      console.log('Earnings query successful, rows:', result.rows.length);
+      console.log('Simple earnings query successful:', result.rows[0]);
       
-      // Create complete year data with all months
+      // Create complete year data with all months (no data for now)
       const monthNames = [
         'January', 'February', 'March', 'April', 'May', 'June',
         'July', 'August', 'September', 'October', 'November', 'December'
       ];
 
       const completeYearData = monthNames.map((monthName, index) => {
-        const monthNumber = (index + 1).toString().padStart(2, '0');
-        const existingData = result.rows.find(data => data.month.toString().padStart(2, '0') === monthNumber);
-        
         return {
           month: monthName,
-          monthNumber: monthNumber,
-          earnings: existingData ? parseFloat(existingData.monthly_earnings.toFixed(2)) : 0,
-          transactions: existingData ? existingData.transactions_count : 0
+          monthNumber: (index + 1).toString().padStart(2, '0'),
+          earnings: 0, // No monthly breakdown for now
+          transactions: 0
         };
       });
 
+      const totalEarnings = result.rows[0]?.total_earnings || 0;
       const response = { 
         year: parseInt(year),
         monthlyEarnings: completeYearData,
-        totalEarnings: completeYearData.reduce((sum, month) => sum + month.earnings, 0)
+        totalEarnings: parseFloat(totalEarnings.toFixed(2))
       };
       
-      console.log('Sending earnings response:', response);
+      console.log('Sending simplified earnings response:', response);
       res.json(response);
     })
     .catch(err => {
-      console.error('Earnings query error:', err);
+      console.error('Simple earnings query error:', err);
       console.error('Error details:', err.message);
       console.error('Error stack:', err.stack);
       res.status(500).json({ error: 'Database error', details: err.message });
