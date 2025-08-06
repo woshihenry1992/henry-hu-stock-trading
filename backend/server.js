@@ -1149,10 +1149,13 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       console.log('All earnings query successful, rows:', result.rows.length);
       
       // Filter by year in JavaScript and calculate total
+      const targetYear = parseInt(year);
+      console.log('Target year (parsed):', targetYear, 'Type:', typeof targetYear);
+      
       const yearFilteredRows = result.rows.filter(row => {
         const rowYear = parseInt(row.sell_year);
-        console.log('Row year:', rowYear, 'Target year:', year, 'Match:', rowYear === year);
-        return rowYear === year;
+        console.log('Row year:', rowYear, 'Target year:', targetYear, 'Match:', rowYear === targetYear);
+        return rowYear === targetYear;
       });
       
       console.log('Year filtered rows:', yearFilteredRows.length);
