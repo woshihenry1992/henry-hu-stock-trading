@@ -1138,7 +1138,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-        AND EXTRACT(YEAR FROM sl.sell_date)::integer = $2
+        AND EXTRACT(YEAR FROM sl.sell_date) = $2
     `, [userId, year])
     .then(result => {
       console.log('Total earnings query successful:', result.rows[0]);
@@ -1180,7 +1180,7 @@ app.get('/api/earnings/monthly', authenticateToken, (req, res) => {
           WHERE sl.user_id = $1 
             AND sl.status = 'sold'
             AND sl.sell_date IS NOT NULL
-            AND EXTRACT(YEAR FROM sl.sell_date)::integer = $2
+            AND EXTRACT(YEAR FROM sl.sell_date) = $2
           GROUP BY EXTRACT(MONTH FROM sl.sell_date)
           ORDER BY month ASC
         `, [userId, year])
