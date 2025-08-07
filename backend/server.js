@@ -1489,8 +1489,8 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
 
     // Verify all transactions belong to the user
     const placeholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
-    pgPool.query(`SELECT id, transaction_type FROM transactions WHERE id = ANY($${transactionIds.length + 1}) AND user_id = $${transactionIds.length + 2}`, 
-      [...transactionIds, transactionIds, userId])
+    pgPool.query(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = $${transactionIds.length + 1}`, 
+      [...transactionIds, userId])
       .then(result => {
         const transactions = result.rows;
         
@@ -1502,8 +1502,9 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
         return pgPool.query('BEGIN')
           .then(() => {
             // Delete the transactions
-            return pgPool.query(`DELETE FROM transactions WHERE id = ANY($1) AND user_id = $2`, 
-              [transactionIds, userId]);
+            const deletePlaceholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
+            return pgPool.query(`DELETE FROM transactions WHERE id IN (${deletePlaceholders}) AND user_id = $${transactionIds.length + 1}`, 
+              [...transactionIds, userId]);
           })
           .then(deleteResult => {
             // Update related share_lots (for sell transactions)
@@ -1512,8 +1513,9 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
               .map(t => t.id);
 
             if (sellTransactionIds.length > 0) {
-              return pgPool.query(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id = ANY($1)`, 
-                [sellTransactionIds])
+              const updatePlaceholders = sellTransactionIds.map((_, index) => `$${index + 1}`).join(',');
+              return pgPool.query(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${updatePlaceholders})`, 
+                sellTransactionIds)
                 .then(() => {
                   return pgPool.query('COMMIT');
                 })
