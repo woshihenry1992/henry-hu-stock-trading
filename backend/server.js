@@ -1639,6 +1639,113 @@ app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
 
+// Admin endpoint to clear ALL data and users (no authentication required for cleanup)
+app.delete('/api/admin/reset-database', (req, res) => {
+  const confirmationKey = req.query.confirm;
+  
+  // Require confirmation key for safety
+  if (confirmationKey !== 'RESET_ALL_DATA_CONFIRM') {
+    return res.status(400).json({ 
+      error: 'Missing confirmation key. Add ?confirm=RESET_ALL_DATA_CONFIRM to URL' 
+    });
+  }
+
+  if (isProduction) {
+    // PostgreSQL version - clear ALL data
+    console.log('ADMIN: Clearing ALL database data');
+    
+    if (!pgPool) {
+      console.error('pgPool not initialized');
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+    
+    pgPool.query('BEGIN')
+      .then(() => {
+        // Delete in correct order to respect foreign keys
+        console.log('Deleting share_lots...');
+        return pgPool.query('DELETE FROM share_lots');
+      })
+      .then(() => {
+        console.log('Deleting transactions...');
+        return pgPool.query('DELETE FROM transactions');
+      })
+      .then(() => {
+        console.log('Deleting stocks...');
+        return pgPool.query('DELETE FROM stocks');
+      })
+      .then(() => {
+        console.log('Deleting users...');
+        return pgPool.query('DELETE FROM users');
+      })
+      .then(() => {
+        return pgPool.query('COMMIT');
+      })
+      .then(() => {
+        console.log('All data cleared successfully');
+        res.json({ 
+          message: 'All database data cleared successfully',
+          cleared: ['share_lots', 'transactions', 'stocks', 'users']
+        });
+      })
+      .catch(err => {
+        console.error('Error clearing all data:', err);
+        return pgPool.query('ROLLBACK')
+          .then(() => {
+            res.status(500).json({ 
+              error: 'Failed to clear all data', 
+              details: err.message
+            });
+          });
+      });
+  } else {
+    // SQLite version - clear ALL data
+    db.serialize(() => {
+      db.run('BEGIN TRANSACTION');
+      
+      db.run('DELETE FROM share_lots', (err) => {
+        if (err) {
+          console.error('Error deleting share_lots:', err);
+          return res.status(500).json({ error: 'Failed to clear share_lots' });
+        }
+        
+        db.run('DELETE FROM transactions', (err) => {
+          if (err) {
+            console.error('Error deleting transactions:', err);
+            return res.status(500).json({ error: 'Failed to clear transactions' });
+          }
+          
+          db.run('DELETE FROM stocks', (err) => {
+            if (err) {
+              console.error('Error deleting stocks:', err);
+              return res.status(500).json({ error: 'Failed to clear stocks' });
+            }
+            
+            db.run('DELETE FROM users', (err) => {
+              if (err) {
+                console.error('Error deleting users:', err);
+                return res.status(500).json({ error: 'Failed to clear users' });
+              }
+              
+              db.run('COMMIT', (err) => {
+                if (err) {
+                  console.error('Error committing transaction:', err);
+                  return res.status(500).json({ error: 'Failed to commit transaction' });
+                }
+                
+                console.log('All data cleared successfully');
+                res.json({ 
+                  message: 'All database data cleared successfully',
+                  cleared: ['share_lots', 'transactions', 'stocks', 'users']
+                });
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+});
+
 // Graceful shutdown
 process.on('SIGINT', () => {
   db.close((err) => {
