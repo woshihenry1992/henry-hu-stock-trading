@@ -1480,60 +1480,129 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
     return res.status(400).json({ error: 'Please select at least one transaction to delete' });
   }
 
-  // Verify all transactions belong to the user
-  const placeholders = transactionIds.map(() => '?').join(',');
-  db.all(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
-    [...transactionIds, userId], (err, transactions) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (transactions.length !== transactionIds.length) {
-        return res.status(400).json({ error: 'Some transactions not found or not accessible' });
-      }
+  if (isProduction) {
+    // PostgreSQL version
+    if (!pgPool) {
+      console.error('pgPool not initialized');
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
 
-      // Start transaction
-      db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
+    // Verify all transactions belong to the user
+    const placeholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
+    pgPool.query(`SELECT id, transaction_type FROM transactions WHERE id = ANY($${transactionIds.length + 1}) AND user_id = $${transactionIds.length + 2}`, 
+      [...transactionIds, transactionIds, userId])
+      .then(result => {
+        const transactions = result.rows;
+        
+        if (transactions.length !== transactionIds.length) {
+          return res.status(400).json({ error: 'Some transactions not found or not accessible' });
+        }
 
-        // Delete the transactions
-        db.run(`DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
-          [...transactionIds, userId], function(err) {
-            if (err) {
-              db.run('ROLLBACK');
-              return res.status(500).json({ error: 'Error deleting transactions' });
-            }
-
+        // Start database transaction
+        return pgPool.query('BEGIN')
+          .then(() => {
+            // Delete the transactions
+            return pgPool.query(`DELETE FROM transactions WHERE id = ANY($1) AND user_id = $2`, 
+              [transactionIds, userId]);
+          })
+          .then(deleteResult => {
             // Update related share_lots (for sell transactions)
             const sellTransactionIds = transactions
               .filter(t => t.transaction_type === 'sell')
               .map(t => t.id);
 
             if (sellTransactionIds.length > 0) {
-              const sellPlaceholders = sellTransactionIds.map(() => '?').join(',');
-              db.run(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${sellPlaceholders})`, 
-                sellTransactionIds, function(err) {
-                  if (err) {
-                    db.run('ROLLBACK');
-                    return res.status(500).json({ error: 'Error updating share lots' });
-                  }
-                  
-                  db.run('COMMIT');
+              return pgPool.query(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id = ANY($1)`, 
+                [sellTransactionIds])
+                .then(() => {
+                  return pgPool.query('COMMIT');
+                })
+                .then(() => {
                   res.json({ 
                     message: 'Transactions deleted successfully',
-                    deletedCount: this.changes
+                    deletedCount: deleteResult.rowCount
                   });
                 });
             } else {
-              db.run('COMMIT');
-              res.json({ 
-                message: 'Transactions deleted successfully',
-                deletedCount: this.changes
-              });
+              return pgPool.query('COMMIT')
+                .then(() => {
+                  res.json({ 
+                    message: 'Transactions deleted successfully',
+                    deletedCount: deleteResult.rowCount
+                  });
+                });
             }
           });
+      })
+      .catch(err => {
+        console.error('Error deleting transactions:', err);
+        return pgPool.query('ROLLBACK')
+          .then(() => {
+            res.status(500).json({ 
+              error: 'Error deleting transactions', 
+              details: err.message
+            });
+          })
+          .catch(() => {
+            res.status(500).json({ error: 'Error deleting transactions' });
+          });
       });
-    });
+  } else {
+    // SQLite version
+    const placeholders = transactionIds.map(() => '?').join(',');
+    db.all(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
+      [...transactionIds, userId], (err, transactions) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        
+        if (transactions.length !== transactionIds.length) {
+          return res.status(400).json({ error: 'Some transactions not found or not accessible' });
+        }
+
+        // Start transaction
+        db.serialize(() => {
+          db.run('BEGIN TRANSACTION');
+
+          // Delete the transactions
+          db.run(`DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
+            [...transactionIds, userId], function(err) {
+              if (err) {
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Error deleting transactions' });
+              }
+
+              // Update related share_lots (for sell transactions)
+              const sellTransactionIds = transactions
+                .filter(t => t.transaction_type === 'sell')
+                .map(t => t.id);
+
+              if (sellTransactionIds.length > 0) {
+                const sellPlaceholders = sellTransactionIds.map(() => '?').join(',');
+                db.run(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${sellPlaceholders})`, 
+                  sellTransactionIds, function(err) {
+                    if (err) {
+                      db.run('ROLLBACK');
+                      return res.status(500).json({ error: 'Error updating share lots' });
+                    }
+                    
+                    db.run('COMMIT');
+                    res.json({ 
+                      message: 'Transactions deleted successfully',
+                      deletedCount: this.changes
+                    });
+                  });
+              } else {
+                db.run('COMMIT');
+                res.json({ 
+                  message: 'Transactions deleted successfully',
+                  deletedCount: this.changes
+                });
+              }
+            });
+        });
+      });
+  }
 });
 
 // Edit share lot (buy date, price, and shares)
