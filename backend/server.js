@@ -422,27 +422,60 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
-    if (err) {
-      return res.status(500).json({ error: 'Database error' });
-    }
-    
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+  if (isProduction) {
+    // PostgreSQL version
+    if (!pgPool) {
+      console.error('pgPool not initialized');
+      return res.status(500).json({ error: 'Database connection not available' });
     }
 
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    pgPool.query('SELECT * FROM users WHERE username = $1', [username])
+      .then(async (result) => {
+        if (result.rows.length === 0) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
 
-    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-    res.json({ 
-      message: 'Login successful',
-      token,
-      user: { id: user.id, username: user.username }
+        const user = result.rows[0];
+        const validPassword = await bcrypt.compare(password, user.password);
+        if (!validPassword) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+        res.json({ 
+          message: 'Login successful',
+          token,
+          user: { id: user.id, username: user.username }
+        });
+      })
+      .catch(err => {
+        console.error('Login database error:', err);
+        res.status(500).json({ error: 'Database error' });
+      });
+  } else {
+    // SQLite version
+    db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!user) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const validPassword = await bcrypt.compare(password, user.password);
+      if (!validPassword) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+      res.json({ 
+        message: 'Login successful',
+        token,
+        user: { id: user.id, username: user.username }
+      });
     });
-  });
+  }
 });
 
 // Get user profile
