@@ -38,10 +38,10 @@ const EarningsChart = () => {
   const [viewMode, setViewMode] = useState('by-stock'); // Always use by-stock view
   const { theme } = useTheme();
 
-  // Generate year options (current year and previous 5 years)
+  // Generate year options (current year, 2 future years, and previous 5 years)
   const yearOptions = [];
   const currentYear = new Date().getFullYear();
-  for (let year = currentYear; year >= currentYear - 5; year--) {
+  for (let year = currentYear + 2; year >= currentYear - 5; year--) {
     yearOptions.push(year);
   }
 
