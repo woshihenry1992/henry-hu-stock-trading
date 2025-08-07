@@ -205,6 +205,8 @@ const StockTransactionHistory = ({ stock, onClose }) => {
               Filter by Type
             </label>
             <select
+              id="transaction-filter"
+              name="transaction-filter"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -243,6 +245,8 @@ const StockTransactionHistory = ({ stock, onClose }) => {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <input
+                    id="select-all-transactions"
+                    name="select-all-transactions"
                     type="checkbox"
                     checked={selectedTransactions.length === sellTransactions.length && sellTransactions.length > 0}
                     onChange={handleSelectAll}
@@ -289,6 +293,8 @@ const StockTransactionHistory = ({ stock, onClose }) => {
                 } ${transaction.transaction_type !== 'sell' ? 'opacity-60' : ''}`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <input
+                      id={`transaction-${transaction.id}`}
+                      name={`transaction-${transaction.id}`}
                       type="checkbox"
                       checked={selectedTransactions.includes(transaction.id)}
                       onChange={() => handleSelectTransaction(transaction.id)}
