@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../config/api';
 
-const StockTransactionHistory = ({ stock, onClose }) => {
+const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -114,9 +114,9 @@ const StockTransactionHistory = ({ stock, onClose }) => {
       setSelectedTransactions([]);
       
       // Refresh portfolio if callback provided
-      // if (onPortfolioRefresh) {
-      //   onPortfolioRefresh();
-      // }
+      if (onPortfolioRefresh) {
+        await onPortfolioRefresh();
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to delete transactions');
     } finally {
