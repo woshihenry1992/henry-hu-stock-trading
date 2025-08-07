@@ -308,8 +308,11 @@ const EarningsChart = () => {
     },
   };
 
-  const totalEarnings = earningsData.totalEarnings;
-  const hasEarnings = totalEarnings > 0;
+  // Use the appropriate data source based on view mode
+  const currentTotalEarnings = viewMode === 'by-stock' && stockEarningsData 
+    ? stockEarningsData.totalEarnings 
+    : earningsData.totalEarnings;
+  const hasEarnings = currentTotalEarnings > 0;
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6" style={{ backgroundColor: theme.colors.card }}>
@@ -386,9 +389,9 @@ const EarningsChart = () => {
                   Total Earnings ({selectedYear})
                 </div>
                 <div className="text-2xl font-bold" style={{ 
-                  color: totalEarnings >= 0 ? theme.colors.success : theme.colors.error 
+                  color: currentTotalEarnings >= 0 ? theme.colors.success : theme.colors.error 
                 }}>
-                  ${totalEarnings.toFixed(2)}
+                  ${currentTotalEarnings.toFixed(2)}
                 </div>
               </div>
               <div>
@@ -407,7 +410,7 @@ const EarningsChart = () => {
                   Average Monthly
                 </div>
                 <div className="text-2xl font-bold" style={{ color: theme.colors.text }}>
-                  ${(totalEarnings / 12).toFixed(2)}
+                  ${(currentTotalEarnings / 12).toFixed(2)}
                 </div>
               </div>
             </div>
