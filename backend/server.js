@@ -1713,21 +1713,42 @@ app.get('/api/earnings/monthly-by-stock', authenticateToken, (req, res) => {
     }
 
     // Get monthly earnings breakdown by stock
+    // First, let's see what data exists without year filter
     pgPool.query(`
       SELECT 
         s.stock_name,
+        sl.sell_date,
+        EXTRACT(YEAR FROM sl.sell_date) as sell_year,
         EXTRACT(MONTH FROM sl.sell_date) as month,
-        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
-        COUNT(*) as transactions_count
+        (sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares as earnings_per_lot
       FROM share_lots sl
       JOIN stocks s ON sl.stock_id = s.id
       WHERE sl.user_id = $1 
         AND sl.status = 'sold'
         AND sl.sell_date IS NOT NULL
-        AND EXTRACT(YEAR FROM sl.sell_date) = $2
-      GROUP BY s.stock_name, EXTRACT(MONTH FROM sl.sell_date)
-      ORDER BY month ASC, s.stock_name ASC
-    `, [userId, year])
+      ORDER BY sl.sell_date DESC
+      LIMIT 10
+    `, [userId])
+      .then(debugResult => {
+        console.log('Debug - Recent sold lots:', debugResult.rows);
+        
+        // Now run the main query
+        return pgPool.query(`
+          SELECT 
+            s.stock_name,
+            EXTRACT(MONTH FROM sl.sell_date) as month,
+            SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+            COUNT(*) as transactions_count
+          FROM share_lots sl
+          JOIN stocks s ON sl.stock_id = s.id
+          WHERE sl.user_id = $1 
+            AND sl.status = 'sold'
+            AND sl.sell_date IS NOT NULL
+            AND EXTRACT(YEAR FROM sl.sell_date) = $2
+          GROUP BY s.stock_name, EXTRACT(MONTH FROM sl.sell_date)
+          ORDER BY month ASC, s.stock_name ASC
+        `, [userId, year]);
+      })
       .then(result => {
         console.log('Monthly by stock query successful, rows:', result.rows.length);
         
