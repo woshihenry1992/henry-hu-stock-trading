@@ -559,6 +559,177 @@ app.get('/api/stocks', authenticateToken, (req, res) => {
   }
 });
 
+// Update stock name
+app.put('/api/stocks/:stockId', authenticateToken, (req, res) => {
+  const { stockId } = req.params;
+  const { stock_name } = req.body;
+  const userId = req.user.userId;
+
+  if (!stock_name || stock_name.trim() === '') {
+    return res.status(400).json({ error: 'Stock name is required' });
+  }
+
+  // Verify stock belongs to user
+  const verifyAndUpdate = (stock) => {
+    if (!stock) {
+      return res.status(404).json({ error: 'Stock not found' });
+    }
+
+    // Check if new name already exists for this user (excluding current stock)
+    const checkDuplicate = (callback) => {
+      if (isProduction) {
+        pgPool.query('SELECT * FROM stocks WHERE user_id = $1 AND stock_name = $2 AND id != $3', 
+          [userId, stock_name.trim(), stockId])
+          .then(result => callback(null, result.rows[0]))
+          .catch(err => callback(err));
+      } else {
+        db.get('SELECT * FROM stocks WHERE user_id = ? AND stock_name = ? AND id != ?', 
+          [userId, stock_name.trim(), stockId], callback);
+      }
+    };
+
+    checkDuplicate((err, duplicate) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (duplicate) {
+        return res.status(400).json({ error: 'Stock name already exists' });
+      }
+
+      // Update stock name
+      if (isProduction) {
+        pgPool.query('UPDATE stocks SET stock_name = $1 WHERE id = $2 AND user_id = $3', 
+          [stock_name.trim(), stockId, userId])
+          .then(() => {
+            res.json({ message: 'Stock renamed successfully' });
+          })
+          .catch(err => {
+            console.error('Error updating stock:', err);
+            res.status(500).json({ error: 'Failed to update stock' });
+          });
+      } else {
+        db.run('UPDATE stocks SET stock_name = ? WHERE id = ? AND user_id = ?', 
+          [stock_name.trim(), stockId, userId], function(err) {
+            if (err) {
+              console.error('Error updating stock:', err);
+              return res.status(500).json({ error: 'Failed to update stock' });
+            }
+            res.json({ message: 'Stock renamed successfully' });
+          });
+      }
+    });
+  };
+
+  // First verify stock ownership
+  if (isProduction) {
+    pgPool.query('SELECT * FROM stocks WHERE id = $1 AND user_id = $2', [stockId, userId])
+      .then(result => verifyAndUpdate(result.rows[0]))
+      .catch(err => {
+        console.error('Error verifying stock:', err);
+        res.status(500).json({ error: 'Database error' });
+      });
+  } else {
+    db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
+      [stockId, userId], (err, stock) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        verifyAndUpdate(stock);
+      });
+  }
+});
+
+// Delete stock (and all related data)
+app.delete('/api/stocks/:stockId', authenticateToken, (req, res) => {
+  const { stockId } = req.params;
+  const userId = req.user.userId;
+
+  // Verify stock belongs to user
+  const verifyAndDelete = (stock) => {
+    if (!stock) {
+      return res.status(404).json({ error: 'Stock not found' });
+    }
+
+    // Delete in correct order: share_lots -> transactions -> stock
+    if (isProduction) {
+      pgPool.query('BEGIN')
+        .then(() => {
+          // Delete share_lots first
+          return pgPool.query('DELETE FROM share_lots WHERE stock_id = $1', [stockId]);
+        })
+        .then(() => {
+          // Delete transactions
+          return pgPool.query('DELETE FROM transactions WHERE stock_id = $1', [stockId]);
+        })
+        .then(() => {
+          // Delete stock
+          return pgPool.query('DELETE FROM stocks WHERE id = $1 AND user_id = $2', [stockId, userId]);
+        })
+        .then(() => {
+          return pgPool.query('COMMIT');
+        })
+        .then(() => {
+          res.json({ message: 'Stock and all related data deleted successfully' });
+        })
+        .catch(err => {
+          pgPool.query('ROLLBACK');
+          console.error('Error deleting stock:', err);
+          res.status(500).json({ error: 'Failed to delete stock' });
+        });
+    } else {
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
+        
+        // Delete share_lots first
+        db.run('DELETE FROM share_lots WHERE stock_id = ?', [stockId], (err) => {
+          if (err) {
+            db.run('ROLLBACK');
+            return res.status(500).json({ error: 'Failed to delete share lots' });
+          }
+          
+          // Delete transactions
+          db.run('DELETE FROM transactions WHERE stock_id = ?', [stockId], (err) => {
+            if (err) {
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Failed to delete transactions' });
+            }
+            
+            // Delete stock
+            db.run('DELETE FROM stocks WHERE id = ? AND user_id = ?', [stockId, userId], (err) => {
+              if (err) {
+                db.run('ROLLBACK');
+                return res.status(500).json({ error: 'Failed to delete stock' });
+              }
+              
+              db.run('COMMIT');
+              res.json({ message: 'Stock and all related data deleted successfully' });
+            });
+          });
+        });
+      });
+    }
+  };
+
+  // First verify stock ownership
+  if (isProduction) {
+    pgPool.query('SELECT * FROM stocks WHERE id = $1 AND user_id = $2', [stockId, userId])
+      .then(result => verifyAndDelete(result.rows[0]))
+      .catch(err => {
+        console.error('Error verifying stock:', err);
+        res.status(500).json({ error: 'Database error' });
+      });
+  } else {
+    db.get('SELECT * FROM stocks WHERE id = ? AND user_id = ?', 
+      [stockId, userId], (err, stock) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        verifyAndDelete(stock);
+      });
+  }
+});
+
 // Add transaction (buy or sell)
 app.post('/api/transactions', authenticateToken, (req, res) => {
   const { stock_id, transaction_type, shares, price_per_share, transaction_date } = req.body;

@@ -17,6 +17,8 @@ const Portfolio = () => {
   const [showSellForm, setShowSellForm] = useState(false);
   const [showStockTransactionHistory, setShowStockTransactionHistory] = useState(false);
   const [transactionType, setTransactionType] = useState('buy');
+  const [editingStock, setEditingStock] = useState(null);
+  const [newStockName, setNewStockName] = useState('');
   const { theme } = useTheme();
 
   const fetchPortfolio = async () => {
@@ -58,6 +60,56 @@ const Portfolio = () => {
     }
   };
 
+  const handleRenameStock = async (stockId) => {
+    if (!newStockName.trim()) {
+      alert('Please enter a valid stock name');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${API_ENDPOINTS.STOCKS}/${stockId}`, 
+        { stock_name: newStockName.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      await fetchPortfolio();
+      setEditingStock(null);
+      setNewStockName('');
+    } catch (err) {
+      console.error('Error renaming stock:', err);
+      alert('Failed to rename stock');
+    }
+  };
+
+  const handleDeleteStock = async (stockId, stockName) => {
+    if (!window.confirm(`Are you sure you want to delete "${stockName}"? This will remove all related transactions and cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      await axios.delete(`${API_ENDPOINTS.STOCKS}/${stockId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      await fetchPortfolio();
+    } catch (err) {
+      console.error('Error deleting stock:', err);
+      alert('Failed to delete stock');
+    }
+  };
+
+  const startRename = (stock) => {
+    setEditingStock(stock.id);
+    setNewStockName(stock.stock_name);
+  };
+
+  const cancelRename = () => {
+    setEditingStock(null);
+    setNewStockName('');
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -93,8 +145,70 @@ const Portfolio = () => {
           {(portfolio || []).map((stock) => (
             <div key={stock.id} className="rounded-lg shadow-md p-6" style={{ backgroundColor: theme.colors.card }}>
               <div className="flex justify-between items-start mb-4">
-                <h3 className="text-xl font-semibold" style={{ color: theme.colors.text }}>{stock.stock_name}</h3>
-                <span className="px-2 py-1 rounded-full text-xs font-medium" style={{
+                <div className="flex items-center gap-2 flex-1">
+                  {editingStock === stock.id ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="text"
+                        value={newStockName}
+                        onChange={(e) => setNewStockName(e.target.value)}
+                        className="flex-1 px-2 py-1 border rounded text-sm"
+                        style={{ 
+                          borderColor: theme.colors.border,
+                          backgroundColor: theme.colors.surface,
+                          color: theme.colors.text
+                        }}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleRenameStock(stock.id);
+                          } else if (e.key === 'Escape') {
+                            cancelRename();
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleRenameStock(stock.id)}
+                        className="px-2 py-1 text-xs rounded hover:opacity-80"
+                        style={{ backgroundColor: theme.colors.success, color: 'white' }}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={cancelRename}
+                        className="px-2 py-1 text-xs rounded hover:opacity-80"
+                        style={{ backgroundColor: theme.colors.error, color: 'white' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-semibold" style={{ color: theme.colors.text }}>
+                        {stock.stock_name}
+                      </h3>
+                      <div className="flex items-center gap-1 ml-2">
+                        <button
+                          onClick={() => startRename(stock)}
+                          className="p-1 rounded hover:bg-gray-200 transition-colors"
+                          title="Rename stock"
+                          style={{ color: theme.colors.textSecondary }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStock(stock.id, stock.stock_name)}
+                          className="p-1 rounded hover:bg-gray-200 transition-colors"
+                          title="Delete stock"
+                          style={{ color: theme.colors.error }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <span className="px-2 py-1 rounded-full text-xs font-medium ml-2" style={{
                   backgroundColor: stock.current_shares > 0 ? theme.colors.success + '20' : theme.colors.border,
                   color: stock.current_shares > 0 ? theme.colors.success : theme.colors.textSecondary
                 }}>
