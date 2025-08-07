@@ -290,7 +290,7 @@ const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
               {sortedTransactions.map((transaction) => (
                 <tr key={transaction.id} className={`${
                   selectedTransactions.includes(transaction.id) ? 'bg-blue-50' : ''
-                } ${transaction.transaction_type !== 'sell' ? 'opacity-60' : ''}`}>
+                }`}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <input
                       id={`transaction-${transaction.id}`}
@@ -298,9 +298,9 @@ const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
                       type="checkbox"
                       checked={selectedTransactions.includes(transaction.id)}
                       onChange={() => handleSelectTransaction(transaction.id)}
-                      disabled={transaction.transaction_type !== 'sell'}
+                      disabled={false}
                       className="rounded"
-                      title={transaction.transaction_type !== 'sell' ? 'Buy transactions cannot be deleted from here. Delete them from the Sell page instead.' : ''}
+                      title="Select this transaction for deletion"
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">

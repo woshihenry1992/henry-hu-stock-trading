@@ -1501,7 +1501,7 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
         // Start database transaction
         return pgPool.query('BEGIN')
           .then(() => {
-            // FIRST: Update related share_lots (for sell transactions) to remove foreign key references
+            // FIRST: Handle sell transactions - Update related share_lots to remove foreign key references
             const sellTransactionIds = transactions
               .filter(t => t.transaction_type === 'sell')
               .map(t => t.id);
@@ -1515,7 +1515,21 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
             }
           })
           .then(() => {
-            // SECOND: Now delete the transactions (after foreign key references are removed)
+            // SECOND: Handle buy transactions - Delete associated share_lots first
+            const buyTransactionIds = transactions
+              .filter(t => t.transaction_type === 'buy')
+              .map(t => t.id);
+
+            if (buyTransactionIds.length > 0) {
+              const deletePlaceholders = buyTransactionIds.map((_, index) => `$${index + 1}`).join(',');
+              return pgPool.query(`DELETE FROM share_lots WHERE buy_transaction_id IN (${deletePlaceholders})`, 
+                buyTransactionIds);
+            } else {
+              return Promise.resolve(); // No buy transactions to handle
+            }
+          })
+          .then(() => {
+            // THIRD: Now delete the transactions (after all foreign key references are handled)
             const deletePlaceholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
             return pgPool.query(`DELETE FROM transactions WHERE id IN (${deletePlaceholders}) AND user_id = $${transactionIds.length + 1}`, 
               [...transactionIds, userId]);
@@ -1560,42 +1574,62 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
         db.serialize(() => {
           db.run('BEGIN TRANSACTION');
 
-          // Delete the transactions
-          db.run(`DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
-            [...transactionIds, userId], function(err) {
-              if (err) {
-                db.run('ROLLBACK');
-                return res.status(500).json({ error: 'Error deleting transactions' });
-              }
+          // FIRST: Handle sell transactions - Update related share_lots to remove foreign key references
+          const sellTransactionIds = transactions
+            .filter(t => t.transaction_type === 'sell')
+            .map(t => t.id);
 
-              // Update related share_lots (for sell transactions)
-              const sellTransactionIds = transactions
-                .filter(t => t.transaction_type === 'sell')
-                .map(t => t.id);
+          function handleBuyTransactions() {
+            // SECOND: Handle buy transactions - Delete associated share_lots first
+            const buyTransactionIds = transactions
+              .filter(t => t.transaction_type === 'buy')
+              .map(t => t.id);
 
-              if (sellTransactionIds.length > 0) {
-                const sellPlaceholders = sellTransactionIds.map(() => '?').join(',');
-                db.run(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${sellPlaceholders})`, 
-                  sellTransactionIds, function(err) {
-                    if (err) {
-                      db.run('ROLLBACK');
-                      return res.status(500).json({ error: 'Error updating share lots' });
-                    }
-                    
-                    db.run('COMMIT');
-                    res.json({ 
-                      message: 'Transactions deleted successfully',
-                      deletedCount: this.changes
-                    });
-                  });
-              } else {
+            if (buyTransactionIds.length > 0) {
+              const buyPlaceholders = buyTransactionIds.map(() => '?').join(',');
+              db.run(`DELETE FROM share_lots WHERE buy_transaction_id IN (${buyPlaceholders})`, 
+                buyTransactionIds, function(err) {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    return res.status(500).json({ error: 'Error deleting share lots for buy transactions' });
+                  }
+                  deleteTransactions();
+                });
+            } else {
+              deleteTransactions();
+            }
+          }
+
+          function deleteTransactions() {
+            // THIRD: Now delete the transactions (after all foreign key references are handled)
+            db.run(`DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
+              [...transactionIds, userId], function(err) {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return res.status(500).json({ error: 'Error deleting transactions' });
+                }
+
                 db.run('COMMIT');
                 res.json({ 
                   message: 'Transactions deleted successfully',
                   deletedCount: this.changes
                 });
-              }
-            });
+              });
+          }
+
+          if (sellTransactionIds.length > 0) {
+            const sellPlaceholders = sellTransactionIds.map(() => '?').join(',');
+            db.run(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${sellPlaceholders})`, 
+              sellTransactionIds, function(err) {
+                if (err) {
+                  db.run('ROLLBACK');
+                  return res.status(500).json({ error: 'Error updating share lots for sell transactions' });
+                }
+                handleBuyTransactions();
+              });
+          } else {
+            handleBuyTransactions();
+          }
         });
       });
   }
