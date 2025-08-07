@@ -1634,11 +1634,6 @@ app.get('/api/test-share-lots', authenticateToken, (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
-
 // Admin endpoint to clear ALL data and users (no authentication required for cleanup)
 app.delete('/api/admin/reset-database', (req, res) => {
   const confirmationKey = req.query.confirm;
@@ -1744,6 +1739,11 @@ app.delete('/api/admin/reset-database', (req, res) => {
       });
     });
   }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
 
 // Graceful shutdown
