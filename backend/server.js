@@ -1501,13 +1501,7 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
         // Start database transaction
         return pgPool.query('BEGIN')
           .then(() => {
-            // Delete the transactions
-            const deletePlaceholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
-            return pgPool.query(`DELETE FROM transactions WHERE id IN (${deletePlaceholders}) AND user_id = $${transactionIds.length + 1}`, 
-              [...transactionIds, userId]);
-          })
-          .then(deleteResult => {
-            // Update related share_lots (for sell transactions)
+            // FIRST: Update related share_lots (for sell transactions) to remove foreign key references
             const sellTransactionIds = transactions
               .filter(t => t.transaction_type === 'sell')
               .map(t => t.id);
@@ -1515,25 +1509,25 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
             if (sellTransactionIds.length > 0) {
               const updatePlaceholders = sellTransactionIds.map((_, index) => `$${index + 1}`).join(',');
               return pgPool.query(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${updatePlaceholders})`, 
-                sellTransactionIds)
-                .then(() => {
-                  return pgPool.query('COMMIT');
-                })
-                .then(() => {
-                  res.json({ 
-                    message: 'Transactions deleted successfully',
-                    deletedCount: deleteResult.rowCount
-                  });
-                });
+                sellTransactionIds);
             } else {
-              return pgPool.query('COMMIT')
-                .then(() => {
-                  res.json({ 
-                    message: 'Transactions deleted successfully',
-                    deletedCount: deleteResult.rowCount
-                  });
-                });
+              return Promise.resolve(); // No sell transactions to update
             }
+          })
+          .then(() => {
+            // SECOND: Now delete the transactions (after foreign key references are removed)
+            const deletePlaceholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
+            return pgPool.query(`DELETE FROM transactions WHERE id IN (${deletePlaceholders}) AND user_id = $${transactionIds.length + 1}`, 
+              [...transactionIds, userId]);
+          })
+          .then(deleteResult => {
+            return pgPool.query('COMMIT')
+              .then(() => {
+                res.json({ 
+                  message: 'Transactions deleted successfully',
+                  deletedCount: deleteResult.rowCount
+                });
+              });
           });
       })
       .catch(err => {
