@@ -1705,6 +1705,59 @@ app.get('/api/test-share-lots', authenticateToken, (req, res) => {
   }
 });
 
+// Test endpoint to debug transaction deletion
+app.post('/api/test-delete-transactions', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const { transactionIds } = req.body;
+
+  console.log('Test delete - userId:', userId, 'transactionIds:', transactionIds);
+
+  if (isProduction) {
+    if (!pgPool) {
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+
+    // First, let's see what transactions exist
+    pgPool.query('SELECT id, transaction_type, user_id FROM transactions WHERE user_id = $1', [userId])
+      .then(result => {
+        console.log('Available transactions for user:', result.rows);
+        
+        if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
+          return res.json({ 
+            message: 'No transaction IDs provided',
+            availableTransactions: result.rows
+          });
+        }
+
+        // Test the verification query
+        const placeholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
+        console.log('Query:', `SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = $${transactionIds.length + 1}`);
+        console.log('Parameters:', [...transactionIds, userId]);
+
+        return pgPool.query(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = $${transactionIds.length + 1}`, 
+          [...transactionIds, userId])
+          .then(verifyResult => {
+            res.json({
+              message: 'Test completed',
+              requestedIds: transactionIds,
+              foundTransactions: verifyResult.rows,
+              allUserTransactions: result.rows
+            });
+          });
+      })
+      .catch(err => {
+        console.error('Test delete error:', err);
+        res.status(500).json({ 
+          error: 'Test failed', 
+          details: err.message,
+          code: err.code
+        });
+      });
+  } else {
+    res.json({ message: 'Development mode - not implemented' });
+  }
+});
+
 // Admin endpoint to clear ALL data and users (no authentication required for cleanup)
 app.delete('/api/admin/reset-database', (req, res) => {
   const confirmationKey = req.query.confirm;
