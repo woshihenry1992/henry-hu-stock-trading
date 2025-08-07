@@ -9,6 +9,7 @@ export const API_ENDPOINTS = {
   TRANSACTIONS: `${API_BASE_URL}/api/transactions`,
   PORTFOLIO: `${API_BASE_URL}/api/portfolio`,
   EARNINGS: `${API_BASE_URL}/api/earnings/monthly`,
+  EARNINGS_BY_STOCK: `${API_BASE_URL}/api/earnings/monthly-by-stock`,
   HEALTH: `${API_BASE_URL}/api/health`,
   SHARE_LOTS: (stockId) => `${API_BASE_URL}/api/stocks/${stockId}/share-lots`,
   SELL_LOTS: (stockId) => `${API_BASE_URL}/api/stocks/${stockId}/sell-lots`,

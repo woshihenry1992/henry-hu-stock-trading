@@ -1699,6 +1699,170 @@ app.get('/api/test-share-lots', authenticateToken, (req, res) => {
   }
 });
 
+// Monthly earnings per stock endpoint
+app.get('/api/earnings/monthly-by-stock', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+
+  console.log('Monthly earnings by stock - userId:', userId, 'year:', year);
+
+  if (isProduction) {
+    if (!pgPool) {
+      console.error('pgPool not initialized');
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+
+    // Get monthly earnings breakdown by stock
+    pgPool.query(`
+      SELECT 
+        s.stock_name,
+        EXTRACT(MONTH FROM sl.sell_date) as month,
+        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+        COUNT(*) as transactions_count
+      FROM share_lots sl
+      JOIN stocks s ON sl.stock_id = s.id
+      WHERE sl.user_id = $1 
+        AND sl.status = 'sold'
+        AND sl.sell_date IS NOT NULL
+        AND EXTRACT(YEAR FROM sl.sell_date) = $2
+      GROUP BY s.stock_name, EXTRACT(MONTH FROM sl.sell_date)
+      ORDER BY month ASC, s.stock_name ASC
+    `, [userId, year])
+      .then(result => {
+        console.log('Monthly by stock query successful, rows:', result.rows.length);
+        
+        // Get all unique stocks that have earnings in this year
+        const stocks = [...new Set(result.rows.map(row => row.stock_name))];
+        console.log('Stocks with earnings:', stocks);
+        
+        // Create month structure
+        const monthNames = [
+          'January', 'February', 'March', 'April', 'May', 'June',
+          'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+
+        // Initialize data structure
+        const monthlyData = monthNames.map((monthName, index) => {
+          const monthNumber = index + 1;
+          const monthData = result.rows.filter(row => parseInt(row.month) === monthNumber);
+          
+          const stockEarnings = {};
+          let monthTotal = 0;
+          
+          // Initialize all stocks with 0
+          stocks.forEach(stock => {
+            stockEarnings[stock] = 0;
+          });
+          
+          // Fill in actual earnings
+          monthData.forEach(row => {
+            const earnings = parseFloat(row.monthly_earnings);
+            stockEarnings[row.stock_name] = earnings;
+            monthTotal += earnings;
+          });
+          
+          return {
+            month: monthName,
+            monthNumber: monthNumber,
+            stockEarnings: stockEarnings,
+            totalEarnings: parseFloat(monthTotal.toFixed(2)),
+            transactions: monthData.reduce((sum, row) => sum + parseInt(row.transactions_count), 0)
+          };
+        });
+
+        // Calculate total earnings for the year
+        const yearTotal = monthlyData.reduce((sum, month) => sum + month.totalEarnings, 0);
+
+        const response = {
+          year: parseInt(year),
+          stocks: stocks,
+          monthlyData: monthlyData,
+          totalEarnings: parseFloat(yearTotal.toFixed(2))
+        };
+        
+        console.log('Sending monthly by stock response:', response);
+        res.json(response);
+      })
+      .catch(err => {
+        console.error('Monthly by stock query error:', err);
+        res.status(500).json({ error: 'Failed to load earnings data by stock' });
+      });
+  } else {
+    // SQLite version
+    db.all(`
+      SELECT 
+        s.stock_name,
+        CAST(strftime('%m', sl.sell_date) AS INTEGER) as month,
+        SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares) as monthly_earnings,
+        COUNT(*) as transactions_count
+      FROM share_lots sl
+      JOIN stocks s ON sl.stock_id = s.id
+      WHERE sl.user_id = ? 
+        AND sl.status = 'sold'
+        AND sl.sell_date IS NOT NULL
+        AND CAST(strftime('%Y', sl.sell_date) AS INTEGER) = ?
+      GROUP BY s.stock_name, CAST(strftime('%m', sl.sell_date) AS INTEGER)
+      ORDER BY month ASC, s.stock_name ASC
+    `, [userId, year], (err, rows) => {
+      if (err) {
+        console.error('Monthly by stock query error:', err);
+        return res.status(500).json({ error: 'Failed to load earnings data by stock' });
+      }
+
+      console.log('Monthly by stock query successful, rows:', rows.length);
+      
+      // Process the same way as PostgreSQL version
+      const stocks = [...new Set(rows.map(row => row.stock_name))];
+      console.log('Stocks with earnings:', stocks);
+      
+      const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+
+      const monthlyData = monthNames.map((monthName, index) => {
+        const monthNumber = index + 1;
+        const monthData = rows.filter(row => parseInt(row.month) === monthNumber);
+        
+        const stockEarnings = {};
+        let monthTotal = 0;
+        
+        // Initialize all stocks with 0
+        stocks.forEach(stock => {
+          stockEarnings[stock] = 0;
+        });
+        
+        // Fill in actual earnings
+        monthData.forEach(row => {
+          const earnings = parseFloat(row.monthly_earnings);
+          stockEarnings[row.stock_name] = earnings;
+          monthTotal += earnings;
+        });
+        
+        return {
+          month: monthName,
+          monthNumber: monthNumber,
+          stockEarnings: stockEarnings,
+          totalEarnings: parseFloat(monthTotal.toFixed(2)),
+          transactions: monthData.reduce((sum, row) => sum + parseInt(row.transactions_count), 0)
+        };
+      });
+
+      const yearTotal = monthlyData.reduce((sum, month) => sum + month.totalEarnings, 0);
+
+      const response = {
+        year: parseInt(year),
+        stocks: stocks,
+        monthlyData: monthlyData,
+        totalEarnings: parseFloat(yearTotal.toFixed(2))
+      };
+      
+      console.log('Sending monthly by stock response:', response);
+      res.json(response);
+    });
+  }
+});
+
 // Test endpoint to debug transaction deletion
 app.post('/api/test-delete-transactions', authenticateToken, (req, res) => {
   const userId = req.user.userId;

@@ -25,9 +25,11 @@ ChartJS.register(
 
 const EarningsChart = () => {
   const [earningsData, setEarningsData] = useState(null);
+  const [stockEarningsData, setStockEarningsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [viewMode, setViewMode] = useState('total'); // 'total' or 'by-stock'
   const { theme } = useTheme();
 
   // Generate year options (current year and previous 5 years)
@@ -36,6 +38,34 @@ const EarningsChart = () => {
   for (let year = currentYear; year >= currentYear - 5; year--) {
     yearOptions.push(year);
   }
+
+  const fetchStockEarningsData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('Authentication token not found. Please log in again.');
+        return;
+      }
+
+      console.log('Fetching stock earnings data for year:', selectedYear);
+      const response = await axios.get(`${API_ENDPOINTS.EARNINGS_BY_STOCK}?year=${selectedYear}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      console.log('Stock earnings data response:', response.data);
+      setStockEarningsData(response.data);
+    } catch (err) {
+      console.error('Error fetching stock earnings data:', err);
+      if (err.response?.status === 401) {
+        setError('Authentication failed. Please log in again.');
+      } else {
+        setError('Failed to load stock earnings data. Please try again.');
+      }
+    }
+  };
 
   const fetchEarningsData = async () => {
     try {
@@ -103,7 +133,15 @@ const EarningsChart = () => {
   };
 
   useEffect(() => {
-    fetchEarningsData();
+    const fetchData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchEarningsData(),
+        fetchStockEarningsData()
+      ]);
+      setLoading(false);
+    };
+    fetchData();
   }, [selectedYear]);
 
   const handleYearChange = (e) => {
@@ -126,7 +164,7 @@ const EarningsChart = () => {
     );
   }
 
-  if (!earningsData) {
+  if (!earningsData || (viewMode === 'by-stock' && !stockEarningsData)) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-lg">No earnings data available</div>
@@ -134,21 +172,72 @@ const EarningsChart = () => {
     );
   }
 
-  // Prepare chart data
-  const chartData = {
-    labels: earningsData.monthlyEarnings.map(item => item.month),
-    datasets: [
-      {
-        label: 'Monthly Earnings ($)',
-        data: earningsData.monthlyEarnings.map(item => item.earnings),
-        backgroundColor: theme.colors.primary,
-        borderColor: theme.colors.secondary,
-        borderWidth: 2,
-        borderRadius: 4,
-        borderSkipped: false,
-      },
-    ],
+  // Generate distinct colors for each stock
+  const generateStockColors = (stocks) => {
+    const colors = [
+      '#8B5CF6', '#06D6A0', '#F59E0B', '#EF4444', '#3B82F6', 
+      '#10B981', '#F97316', '#8B5CF6', '#EC4899', '#6366F1'
+    ];
+    return stocks.map((_, index) => colors[index % colors.length]);
   };
+
+  // Prepare chart data based on view mode
+  let chartData;
+  let currentData = viewMode === 'by-stock' ? stockEarningsData : earningsData;
+
+  if (viewMode === 'by-stock' && stockEarningsData) {
+    // Prepare stacked bar chart data for per-stock view
+    const stocks = stockEarningsData.stocks || [];
+    const colors = generateStockColors(stocks);
+    
+    const datasets = stocks.map((stock, index) => ({
+      label: stock,
+      data: stockEarningsData.monthlyData.map(month => 
+        month.stockEarnings[stock] || 0
+      ),
+      backgroundColor: colors[index],
+      borderColor: colors[index],
+      borderWidth: 1,
+      borderRadius: 2,
+    }));
+
+    // Add total line if there are multiple stocks
+    if (stocks.length > 1) {
+      datasets.push({
+        label: 'Total Monthly Earnings',
+        data: stockEarningsData.monthlyData.map(month => month.totalEarnings),
+        type: 'line',
+        borderColor: theme.colors.text,
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        pointBackgroundColor: theme.colors.text,
+        pointBorderColor: theme.colors.text,
+        pointRadius: 5,
+        tension: 0.1,
+      });
+    }
+
+    chartData = {
+      labels: stockEarningsData.monthlyData.map(item => item.month),
+      datasets: datasets,
+    };
+  } else {
+    // Original total earnings view
+    chartData = {
+      labels: earningsData.monthlyEarnings.map(item => item.month),
+      datasets: [
+        {
+          label: 'Monthly Earnings ($)',
+          data: earningsData.monthlyEarnings.map(item => item.earnings),
+          backgroundColor: theme.colors.primary,
+          borderColor: theme.colors.secondary,
+          borderWidth: 2,
+          borderRadius: 4,
+          borderSkipped: false,
+        },
+      ],
+    };
+  }
 
   const chartOptions = {
     responsive: true,
@@ -165,7 +254,7 @@ const EarningsChart = () => {
       },
       title: {
         display: true,
-        text: `Annual Earnings - ${earningsData.year}`,
+        text: `${viewMode === 'by-stock' ? 'Monthly Earnings by Stock' : 'Total Monthly Earnings'} - ${currentData.year}`,
         color: theme.colors.text,
         font: {
           size: 18,
@@ -180,6 +269,9 @@ const EarningsChart = () => {
         borderWidth: 1,
         callbacks: {
           label: function(context) {
+            if (viewMode === 'by-stock') {
+              return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
+            }
             return `Earnings: $${context.parsed.y.toFixed(2)}`;
           },
         },
@@ -187,6 +279,7 @@ const EarningsChart = () => {
     },
     scales: {
       x: {
+        stacked: viewMode === 'by-stock',
         ticks: {
           color: theme.colors.textSecondary,
           font: {
@@ -198,6 +291,7 @@ const EarningsChart = () => {
         },
       },
       y: {
+        stacked: viewMode === 'by-stock',
         ticks: {
           color: theme.colors.textSecondary,
           font: {
@@ -224,26 +318,53 @@ const EarningsChart = () => {
           Annual Earnings Chart
         </h2>
         
-        <div className="flex items-center space-x-4">
-          <label className="text-sm font-medium" style={{ color: theme.colors.text }}>
-            Select Year:
-          </label>
-          <select
-            value={selectedYear}
-            onChange={handleYearChange}
-            className="px-3 py-2 border rounded-md text-sm"
-            style={{
-              backgroundColor: theme.colors.surface,
-              color: theme.colors.text,
-              borderColor: theme.colors.border,
-            }}
-          >
-            {yearOptions.map(year => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-4">
+          {/* View Mode Toggle */}
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium" style={{ color: theme.colors.text }}>
+              View:
+            </label>
+            <select
+              id="view-mode"
+              name="view-mode"
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                color: theme.colors.text
+              }}
+            >
+              <option value="total">Total Earnings</option>
+              <option value="by-stock">By Stock</option>
+            </select>
+          </div>
+          
+          {/* Year Selector */}
+          <div className="flex items-center space-x-2">
+            <label className="text-sm font-medium" style={{ color: theme.colors.text }}>
+              Year:
+            </label>
+            <select
+              id="year-selector"
+              name="year-selector"
+              value={selectedYear}
+              onChange={handleYearChange}
+              className="px-3 py-1 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              style={{
+                backgroundColor: theme.colors.surface,
+                color: theme.colors.text,
+                borderColor: theme.colors.border,
+              }}
+            >
+              {yearOptions.map(year => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -272,10 +393,13 @@ const EarningsChart = () => {
               </div>
               <div>
                 <div className="text-sm" style={{ color: theme.colors.textSecondary }}>
-                  Total Transactions
+                  {viewMode === 'by-stock' ? 'Stocks with Earnings' : 'Total Transactions'}
                 </div>
                 <div className="text-2xl font-bold" style={{ color: theme.colors.text }}>
-                  {earningsData.monthlyEarnings.reduce((sum, month) => sum + month.transactions, 0)}
+                  {viewMode === 'by-stock' 
+                    ? (stockEarningsData?.stocks?.length || 0)
+                    : earningsData.monthlyEarnings.reduce((sum, month) => sum + month.transactions, 0)
+                  }
                 </div>
               </div>
               <div>
@@ -287,6 +411,39 @@ const EarningsChart = () => {
                 </div>
               </div>
             </div>
+            
+            {/* Show stock breakdown for by-stock view */}
+            {viewMode === 'by-stock' && stockEarningsData && stockEarningsData.stocks && stockEarningsData.stocks.length > 0 && (
+              <div className="mt-4 pt-4 border-t" style={{ borderColor: theme.colors.border }}>
+                <h4 className="text-sm font-medium mb-2" style={{ color: theme.colors.text }}>
+                  Total Earnings by Stock:
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {stockEarningsData.stocks.map((stock, index) => {
+                    const stockTotal = stockEarningsData.monthlyData.reduce(
+                      (sum, month) => sum + (month.stockEarnings[stock] || 0), 0
+                    );
+                    const colors = generateStockColors(stockEarningsData.stocks);
+                    return (
+                      <div key={stock} className="text-center p-2 rounded" style={{ backgroundColor: theme.colors.card }}>
+                        <div 
+                          className="w-3 h-3 rounded-full mx-auto mb-1" 
+                          style={{ backgroundColor: colors[index] }}
+                        ></div>
+                        <div className="text-xs font-medium" style={{ color: theme.colors.text }}>
+                          {stock}
+                        </div>
+                        <div className="text-sm font-bold" style={{ 
+                          color: stockTotal >= 0 ? theme.colors.success : theme.colors.error 
+                        }}>
+                          ${stockTotal.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="h-80">
