@@ -410,7 +410,7 @@ const EarningsChart = () => {
               Monthly Breakdown
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {earningsData.monthlyEarnings.map((month, index) => (
+              {stockEarningsData.monthlyData.map((month, index) => (
                 <div
                   key={index}
                   className="p-3 rounded-lg text-center"
@@ -420,9 +420,9 @@ const EarningsChart = () => {
                     {month.month}
                   </div>
                   <div className="text-lg font-bold" style={{ 
-                    color: month.earnings >= 0 ? theme.colors.success : theme.colors.error 
+                    color: month.totalEarnings >= 0 ? theme.colors.success : theme.colors.error 
                   }}>
-                    ${month.earnings.toFixed(2)}
+                    ${month.totalEarnings.toFixed(2)}
                   </div>
                   <div className="text-xs" style={{ color: theme.colors.textSecondary }}>
                     {month.transactions} transactions
