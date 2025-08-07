@@ -7,6 +7,7 @@ import {
   BarElement,
   LineElement,
   PointElement,
+  LineController,
   Title,
   Tooltip,
   Legend,
@@ -22,6 +23,7 @@ ChartJS.register(
   BarElement,
   LineElement,
   PointElement,
+  LineController,
   Title,
   Tooltip,
   Legend
