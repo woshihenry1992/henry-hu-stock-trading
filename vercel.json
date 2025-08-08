@@ -16,6 +16,6 @@
     }
   ],
   "env": {
-    "REACT_APP_API_URL": "https://your-backend-url.railway.app"
+    "REACT_APP_API_URL": "https://henry-hu-stock-trading.onrender.com"
   }
 } 

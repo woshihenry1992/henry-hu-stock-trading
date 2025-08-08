@@ -24,7 +24,11 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: [
+    'http://localhost:3000',
+    'https://henry-hu-stock-trading.vercel.app',
+    'https://henry-hu-stock-trading.onrender.com'
+  ],
   credentials: true
 }));
 app.use(express.json());
@@ -454,27 +458,27 @@ app.post('/api/login', (req, res) => {
       });
   } else {
     // SQLite version
-    db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (!user) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
+  db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-      const validPassword = await bcrypt.compare(password, user.password);
-      if (!validPassword) {
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-      const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
-      res.json({ 
-        message: 'Login successful',
-        token,
-        user: { id: user.id, username: user.username }
-      });
+    const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ 
+      message: 'Login successful',
+      token,
+      user: { id: user.id, username: user.username }
     });
+  });
   }
 });
 
@@ -1656,9 +1660,9 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
     if (!pgPool) {
       console.error('pgPool not initialized');
       return res.status(500).json({ error: 'Database connection not available' });
-    }
+  }
 
-    // Verify all transactions belong to the user
+  // Verify all transactions belong to the user
     const placeholders = transactionIds.map((_, index) => `$${index + 1}`).join(',');
     pgPool.query(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = $${transactionIds.length + 1}`, 
       [...transactionIds, userId])
@@ -1716,59 +1720,59 @@ app.delete('/api/transactions', authenticateToken, (req, res) => {
       });
   } else {
     // SQLite version
-    const placeholders = transactionIds.map(() => '?').join(',');
-    db.all(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
-      [...transactionIds, userId], (err, transactions) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        
-        if (transactions.length !== transactionIds.length) {
-          return res.status(400).json({ error: 'Some transactions not found or not accessible' });
-        }
+  const placeholders = transactionIds.map(() => '?').join(',');
+  db.all(`SELECT id, transaction_type FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
+    [...transactionIds, userId], (err, transactions) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (transactions.length !== transactionIds.length) {
+        return res.status(400).json({ error: 'Some transactions not found or not accessible' });
+      }
 
-        // Start transaction
-        db.serialize(() => {
-          db.run('BEGIN TRANSACTION');
+      // Start transaction
+      db.serialize(() => {
+        db.run('BEGIN TRANSACTION');
 
-          // Delete the transactions
-          db.run(`DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
-            [...transactionIds, userId], function(err) {
-              if (err) {
-                db.run('ROLLBACK');
-                return res.status(500).json({ error: 'Error deleting transactions' });
-              }
+        // Delete the transactions
+        db.run(`DELETE FROM transactions WHERE id IN (${placeholders}) AND user_id = ?`, 
+          [...transactionIds, userId], function(err) {
+            if (err) {
+              db.run('ROLLBACK');
+              return res.status(500).json({ error: 'Error deleting transactions' });
+            }
 
-              // Update related share_lots (for sell transactions)
-              const sellTransactionIds = transactions
-                .filter(t => t.transaction_type === 'sell')
-                .map(t => t.id);
+            // Update related share_lots (for sell transactions)
+            const sellTransactionIds = transactions
+              .filter(t => t.transaction_type === 'sell')
+              .map(t => t.id);
 
-              if (sellTransactionIds.length > 0) {
-                const sellPlaceholders = sellTransactionIds.map(() => '?').join(',');
-                db.run(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${sellPlaceholders})`, 
-                  sellTransactionIds, function(err) {
-                    if (err) {
-                      db.run('ROLLBACK');
-                      return res.status(500).json({ error: 'Error updating share lots' });
-                    }
-                    
-                    db.run('COMMIT');
-                    res.json({ 
-                      message: 'Transactions deleted successfully',
-                      deletedCount: this.changes
-                    });
+            if (sellTransactionIds.length > 0) {
+              const sellPlaceholders = sellTransactionIds.map(() => '?').join(',');
+              db.run(`UPDATE share_lots SET sell_transaction_id = NULL, sell_price_per_share = NULL, sell_date = NULL, status = 'active' WHERE sell_transaction_id IN (${sellPlaceholders})`, 
+                sellTransactionIds, function(err) {
+                  if (err) {
+                    db.run('ROLLBACK');
+                    return res.status(500).json({ error: 'Error updating share lots' });
+                  }
+                  
+                  db.run('COMMIT');
+                  res.json({ 
+                    message: 'Transactions deleted successfully',
+                    deletedCount: this.changes
                   });
-              } else {
-                db.run('COMMIT');
-                res.json({ 
-                  message: 'Transactions deleted successfully',
-                  deletedCount: this.changes
                 });
-              }
-            });
-        });
+            } else {
+              db.run('COMMIT');
+              res.json({ 
+                message: 'Transactions deleted successfully',
+                deletedCount: this.changes
+              });
+            }
+          });
       });
+    });
   }
 });
 
