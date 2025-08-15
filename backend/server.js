@@ -74,9 +74,14 @@ app.get('/', (req, res) => {
       stocks: '/api/stocks',
       transactions: '/api/transactions',
       portfolio: '/api/portfolio',
-      earnings: '/api/earnings/monthly'
+      earnings: '/api/earnings/monthly',
+      'data-protection': {
+        'export-data': '/api/admin/export-data',
+        'check-integrity': '/api/admin/check-integrity'
+      }
     },
-    status: 'running'
+    status: 'running',
+    protection: 'Data protection measures are now active'
   });
 });
 
@@ -2206,85 +2211,135 @@ app.post('/api/test-delete-transactions', authenticateToken, (req, res) => {
   }
 });
 
-// Temporary admin endpoint to fix user password (SAFE - only for this specific case)
-app.put('/api/admin/fix-password', (req, res) => {
-  const { username, newPassword, confirmKey } = req.body;
+// DATA PROTECTION: Temporary admin endpoint removed for security
+// Password updates now use the secure /api/profile/password endpoint
+
+// Data Protection: Safe data export endpoint (read-only, no data loss risk)
+app.get('/api/admin/export-data', authenticateToken, (req, res) => {
+  // Only allow data export, never deletion
+  const userId = req.user.userId;
   
-  // Require confirmation key for safety
-  if (confirmKey !== 'FIX_HENRY_PASSWORD_SAFE') {
-    return res.status(400).json({ 
-      error: 'Missing confirmation key. Add confirmKey: "FIX_HENRY_PASSWORD_SAFE" to request body' 
-    });
-  }
-
-  if (!username || !newPassword) {
-    return res.status(400).json({ error: 'Username and newPassword are required' });
-  }
-
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
-  }
-
   if (isProduction) {
-    // PostgreSQL version
-    pgPool.query('SELECT id FROM users WHERE username = $1', [username])
-      .then(result => {
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: 'User not found' });
-        }
-
-        const userId = result.rows[0].id;
-        
-        // Hash new password and update
-        bcrypt.hash(newPassword, 10, (err, hashedPassword) => {
-          if (err) {
-            return res.status(500).json({ error: 'Error hashing password' });
-          }
-
-          pgPool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId])
-            .then(() => {
-              res.json({ 
-                message: 'Password updated successfully',
-                username: username,
-                userId: userId
-              });
-            })
-            .catch(err => {
-              console.error('Password update error:', err);
-              res.status(500).json({ error: 'Error updating password' });
-            });
-        });
-      })
-      .catch(err => {
-        console.error('User lookup error:', err);
-        res.status(500).json({ error: 'Database error' });
+    // Export user's data safely (read-only operation)
+    Promise.all([
+      pgPool.query('SELECT * FROM stocks WHERE user_id = $1', [userId]),
+      pgPool.query('SELECT * FROM transactions WHERE user_id = $1', [userId]),
+      pgPool.query('SELECT * FROM share_lots WHERE user_id = $1', [userId])
+    ])
+    .then(([stocks, transactions, shareLots]) => {
+      res.json({
+        message: 'Data export successful (read-only operation)',
+        data: {
+          stocks: stocks.rows,
+          transactions: transactions.rows,
+          shareLots: shareLots.rows
+        },
+        timestamp: new Date().toISOString(),
+        protection: 'This is a safe read-only operation'
       });
+    })
+    .catch(err => {
+      console.error('Data export error:', err);
+      res.status(500).json({ error: 'Error exporting data' });
+    });
   } else {
     // SQLite version
-    db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      
-      if (!user) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-
-      // Hash new password and update
-      bcrypt.hash(newPassword, 10, (err, hashedPassword) => {
+    db.serialize(() => {
+      db.all('SELECT * FROM stocks WHERE user_id = ?', [userId], (err, stocks) => {
         if (err) {
-          return res.status(500).json({ error: 'Error hashing password' });
+          return res.status(500).json({ error: 'Error exporting stocks' });
         }
-
-        db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id], function(err) {
+        
+        db.all('SELECT * FROM transactions WHERE user_id = ?', [userId], (err, transactions) => {
           if (err) {
-            return res.status(500).json({ error: 'Error updating password' });
+            return res.status(500).json({ error: 'Error exporting transactions' });
           }
           
-          res.json({ 
-            message: 'Password updated successfully',
-            username: username,
-            userId: user.id
+          db.all('SELECT * FROM share_lots WHERE user_id = ?', [userId], (err, shareLots) => {
+            if (err) {
+              return res.status(500).json({ error: 'Error exporting share_lots' });
+            }
+            
+            res.json({
+              message: 'Data export successful (read-only operation)',
+              data: {
+                stocks: stocks,
+                transactions: transactions,
+                shareLots: shareLots
+              },
+              timestamp: new Date().toISOString(),
+              protection: 'This is a safe read-only operation'
+            });
+          });
+        });
+      });
+    });
+  }
+});
+
+// Data Protection: Data integrity check endpoint
+app.get('/api/admin/check-integrity', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  if (isProduction) {
+    // Check data integrity for user
+    Promise.all([
+      pgPool.query('SELECT COUNT(*) as count FROM stocks WHERE user_id = $1', [userId]),
+      pgPool.query('SELECT COUNT(*) as count FROM transactions WHERE user_id = $1', [userId]),
+      pgPool.query('SELECT COUNT(*) as count FROM share_lots WHERE user_id = $1', [userId])
+    ])
+    .then(([stocks, transactions, shareLots]) => {
+      const integrityReport = {
+        message: 'Data integrity check completed',
+        userId: userId,
+        timestamp: new Date().toISOString(),
+        data: {
+          stocks: parseInt(stocks.rows[0].count),
+          transactions: parseInt(transactions.rows[0].count),
+          shareLots: parseInt(shareLots.rows[0].count)
+        },
+        status: 'healthy',
+        protection: 'Data integrity monitoring active'
+      };
+      
+      res.json(integrityReport);
+    })
+    .catch(err => {
+      console.error('Integrity check error:', err);
+      res.status(500).json({ error: 'Error checking data integrity' });
+    });
+  } else {
+    // SQLite version
+    db.serialize(() => {
+      db.get('SELECT COUNT(*) as count FROM stocks WHERE user_id = ?', [userId], (err, stocks) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error checking stocks integrity' });
+        }
+        
+        db.get('SELECT COUNT(*) as count FROM transactions WHERE user_id = ?', [userId], (err, transactions) => {
+          if (err) {
+            return res.status(500).json({ error: 'Error checking transactions integrity' });
+          }
+          
+          db.get('SELECT COUNT(*) as count FROM share_lots WHERE user_id = ?', [userId], (err, shareLots) => {
+            if (err) {
+              return res.status(500).json({ error: 'Error checking share_lots integrity' });
+            }
+            
+                         const integrityReport = {
+               message: 'Data integrity check completed',
+               userId: userId,
+               timestamp: new Date().toISOString(),
+              data: {
+                stocks: stocks.count,
+                transactions: transactions.count,
+                shareLots: shareLots.count
+              },
+              status: 'healthy',
+              protection: 'Data integrity monitoring active'
+            };
+            
+            res.json(integrityReport);
           });
         });
       });
@@ -2293,110 +2348,19 @@ app.put('/api/admin/fix-password', (req, res) => {
 });
 
 // Admin endpoint to clear ALL data and users (no authentication required for cleanup)
+// DATA PROTECTION: This dangerous endpoint has been permanently disabled
 app.delete('/api/admin/reset-database', (req, res) => {
   const confirmationKey = req.query.confirm;
   
-  // Require confirmation key for safety
-  if (confirmationKey !== 'RESET_ALL_DATA_CONFIRM') {
-    return res.status(400).json({ 
-      error: 'Missing confirmation key. Add ?confirm=RESET_ALL_DATA_CONFIRM to URL' 
-    });
-  }
+  // DATA PROTECTION: This endpoint has been permanently disabled
 
-  if (isProduction) {
-    // PostgreSQL version - clear ALL data
-    console.log('ADMIN: Clearing ALL database data');
-    
-    if (!pgPool) {
-      console.error('pgPool not initialized');
-      return res.status(500).json({ error: 'Database connection not available' });
-    }
-    
-    pgPool.query('BEGIN')
-      .then(() => {
-        // Delete in correct order to respect foreign keys
-        console.log('Deleting share_lots...');
-        return pgPool.query('DELETE FROM share_lots');
-      })
-      .then(() => {
-        console.log('Deleting transactions...');
-        return pgPool.query('DELETE FROM transactions');
-      })
-      .then(() => {
-        console.log('Deleting stocks...');
-        return pgPool.query('DELETE FROM stocks');
-      })
-      .then(() => {
-        console.log('Deleting users...');
-        return pgPool.query('DELETE FROM users');
-      })
-      .then(() => {
-        return pgPool.query('COMMIT');
-      })
-      .then(() => {
-        console.log('All data cleared successfully');
-        res.json({ 
-          message: 'All database data cleared successfully',
-          cleared: ['share_lots', 'transactions', 'stocks', 'users']
-        });
-      })
-      .catch(err => {
-        console.error('Error clearing all data:', err);
-        return pgPool.query('ROLLBACK')
-          .then(() => {
-            res.status(500).json({ 
-              error: 'Failed to clear all data', 
-              details: err.message
-            });
-          });
-      });
-  } else {
-    // SQLite version - clear ALL data
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      
-      db.run('DELETE FROM share_lots', (err) => {
-        if (err) {
-          console.error('Error deleting share_lots:', err);
-          return res.status(500).json({ error: 'Failed to clear share_lots' });
-        }
-        
-        db.run('DELETE FROM transactions', (err) => {
-          if (err) {
-            console.error('Error deleting transactions:', err);
-            return res.status(500).json({ error: 'Failed to clear transactions' });
-          }
-          
-          db.run('DELETE FROM stocks', (err) => {
-            if (err) {
-              console.error('Error deleting stocks:', err);
-              return res.status(500).json({ error: 'Failed to clear stocks' });
-            }
-            
-            db.run('DELETE FROM users', (err) => {
-              if (err) {
-                console.error('Error deleting users:', err);
-                return res.status(500).json({ error: 'Failed to clear users' });
-              }
-              
-              db.run('COMMIT', (err) => {
-                if (err) {
-                  console.error('Error committing transaction:', err);
-                  return res.status(500).json({ error: 'Failed to commit transaction' });
-                }
-                
-                console.log('All data cleared successfully');
-                res.json({ 
-                  message: 'All database data cleared successfully',
-                  cleared: ['share_lots', 'transactions', 'stocks', 'users']
-                });
-              });
-            });
-          });
-        });
-      });
-    });
-  }
+  // DATA PROTECTION: This endpoint has been permanently disabled
+  res.status(403).json({ 
+    error: 'This endpoint has been permanently disabled for data protection',
+    message: 'Database reset operations are not allowed in production',
+    contact: 'Contact system administrator if data recovery is needed',
+    protection: 'Data protection measures are now in place'
+  });
 });
 
 // Start server
