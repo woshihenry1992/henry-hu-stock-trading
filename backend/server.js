@@ -70,6 +70,7 @@ app.get('/', (req, res) => {
       register: '/api/register',
       login: '/api/login',
       profile: '/api/profile',
+      'update-password': '/api/profile/password',
       stocks: '/api/stocks',
       transactions: '/api/transactions',
       portfolio: '/api/portfolio',
@@ -490,6 +491,99 @@ app.get('/api/profile', authenticateToken, (req, res) => {
       username: req.user.username 
     } 
   });
+});
+
+// Update user password
+app.put('/api/profile/password', authenticateToken, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user.userId;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters long' });
+  }
+
+  // First, verify current password
+  if (isProduction) {
+    // PostgreSQL version
+    pgPool.query('SELECT password FROM users WHERE id = $1', [userId])
+      .then(result => {
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        const hashedPassword = result.rows[0].password;
+        
+        bcrypt.compare(currentPassword, hashedPassword, (err, isMatch) => {
+          if (err) {
+            return res.status(500).json({ error: 'Error verifying password' });
+          }
+          
+          if (!isMatch) {
+            return res.status(400).json({ error: 'Current password is incorrect' });
+          }
+
+          // Hash new password and update
+          bcrypt.hash(newPassword, 10, (err, hashedNewPassword) => {
+            if (err) {
+              return res.status(500).json({ error: 'Error hashing new password' });
+            }
+
+            pgPool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedNewPassword, userId])
+              .then(() => {
+                res.json({ message: 'Password updated successfully' });
+              })
+              .catch(err => {
+                console.error('Password update error:', err);
+                res.status(500).json({ error: 'Error updating password' });
+              });
+          });
+        });
+      })
+      .catch(err => {
+        console.error('Password verification error:', err);
+        res.status(500).json({ error: 'Database error' });
+      });
+  } else {
+    // SQLite version
+    db.get('SELECT password FROM users WHERE id = ?', [userId], (err, user) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      bcrypt.compare(currentPassword, user.password, (err, isMatch) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error verifying password' });
+        }
+        
+        if (!isMatch) {
+          return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+
+        // Hash new password and update
+        bcrypt.hash(newPassword, 10, (err, hashedNewPassword) => {
+          if (err) {
+            return res.status(500).json({ error: 'Error hashing new password' });
+          }
+
+          db.run('UPDATE users SET password = ? WHERE id = ?', [hashedNewPassword, userId], function(err) {
+            if (err) {
+              return res.status(500).json({ error: 'Error updating password' });
+            }
+            
+            res.json({ message: 'Password updated successfully' });
+          });
+        });
+      });
+    });
+  }
 });
 
 // Stock Management Routes
@@ -2109,6 +2203,92 @@ app.post('/api/test-delete-transactions', authenticateToken, (req, res) => {
       });
   } else {
     res.json({ message: 'Development mode - not implemented' });
+  }
+});
+
+// Temporary admin endpoint to fix user password (SAFE - only for this specific case)
+app.put('/api/admin/fix-password', (req, res) => {
+  const { username, newPassword, confirmKey } = req.body;
+  
+  // Require confirmation key for safety
+  if (confirmKey !== 'FIX_HENRY_PASSWORD_SAFE') {
+    return res.status(400).json({ 
+      error: 'Missing confirmation key. Add confirmKey: "FIX_HENRY_PASSWORD_SAFE" to request body' 
+    });
+  }
+
+  if (!username || !newPassword) {
+    return res.status(400).json({ error: 'Username and newPassword are required' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
+
+  if (isProduction) {
+    // PostgreSQL version
+    pgPool.query('SELECT id FROM users WHERE username = $1', [username])
+      .then(result => {
+        if (result.rows.length === 0) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        const userId = result.rows[0].id;
+        
+        // Hash new password and update
+        bcrypt.hash(newPassword, 10, (err, hashedPassword) => {
+          if (err) {
+            return res.status(500).json({ error: 'Error hashing password' });
+          }
+
+          pgPool.query('UPDATE users SET password = $1 WHERE id = $2', [hashedPassword, userId])
+            .then(() => {
+              res.json({ 
+                message: 'Password updated successfully',
+                username: username,
+                userId: userId
+              });
+            })
+            .catch(err => {
+              console.error('Password update error:', err);
+              res.status(500).json({ error: 'Error updating password' });
+            });
+        });
+      })
+      .catch(err => {
+        console.error('User lookup error:', err);
+        res.status(500).json({ error: 'Database error' });
+      });
+  } else {
+    // SQLite version
+    db.get('SELECT id FROM users WHERE username = ?', [username], (err, user) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Hash new password and update
+      bcrypt.hash(newPassword, 10, (err, hashedPassword) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error hashing password' });
+        }
+
+        db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id], function(err) {
+          if (err) {
+            return res.status(500).json({ error: 'Error updating password' });
+          }
+          
+          res.json({ 
+            message: 'Password updated successfully',
+            username: username,
+            userId: user.id
+          });
+        });
+      });
+    });
   }
 });
 
