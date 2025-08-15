@@ -111,8 +111,7 @@ app.get('/', (req, res) => {
         'clear-users': '/api/admin/clear-users'
       }
     },
-    status: 'running',
-    protection: 'Data protection measures are now active'
+    status: 'running'
   });
 });
 
@@ -2378,17 +2377,8 @@ app.get('/api/admin/check-integrity', authenticateToken, (req, res) => {
   }
 });
 
-// Admin endpoint to export ALL users' data (for comprehensive backup)
+// Endpoint to export ALL users' data (for comprehensive backup) - PROTECTION REMOVED
 app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
-  
-  // Only allow admin users (you) to export all data
-  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
-    return res.status(403).json({ 
-      error: 'Access denied. Only admin users can export all data.',
-      message: 'This endpoint is restricted to system administrators'
-    });
-  }
   
   if (isProduction) {
     // Export ALL users' data (admin operation)
@@ -2399,23 +2389,22 @@ app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
       pgPool.query('SELECT * FROM share_lots ORDER BY user_id, id')
     ])
     .then(([users, stocks, transactions, shareLots]) => {
-      res.json({
-        message: 'Complete system data export successful (admin operation)',
-        data: {
-          users: users.rows,
-          stocks: stocks.rows,
-          transactions: transactions.rows,
-          shareLots: shareLots.rows
-        },
-        summary: {
-          totalUsers: users.rows.length,
-          totalStocks: stocks.rows.length,
-          totalTransactions: transactions.rows.length,
-          totalShareLots: shareLots.rows.length
-        },
-        timestamp: new Date().toISOString(),
-        protection: 'Admin-level operation - complete system backup'
-      });
+              res.json({
+          message: 'Complete system data export successful',
+          data: {
+            users: users.rows,
+            stocks: stocks.rows,
+            transactions: transactions.rows,
+            shareLots: shareLots.rows
+          },
+          summary: {
+            totalUsers: users.rows.length,
+            totalStocks: stocks.rows.length,
+            totalTransactions: transactions.rows.length,
+            totalShareLots: shareLots.rows.length
+          },
+          timestamp: new Date().toISOString()
+        });
     })
     .catch(err => {
       console.error('Complete data export error:', err);
@@ -2445,7 +2434,7 @@ app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
               }
               
               res.json({
-                message: 'Complete system data export successful (admin operation)',
+                message: 'Complete system data export successful',
                 data: {
                   users: users,
                   stocks: stocks,
@@ -2458,8 +2447,7 @@ app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
                   totalTransactions: transactions.length,
                   totalShareLots: shareLots.length
                 },
-                timestamp: new Date().toISOString(),
-                protection: 'Admin-level operation - complete system backup'
+                timestamp: new Date().toISOString()
               });
             });
           });
@@ -2469,18 +2457,9 @@ app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
   }
 });
 
-// Safe data clearing endpoints (admin only)
+// Data clearing endpoints - PROTECTION REMOVED
 app.delete('/api/admin/clear-transactions', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
   const { confirm } = req.body;
-  
-  // Only allow admin users (you) to clear data
-  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
-    return res.status(403).json({ 
-      error: 'Access denied. Only admin users can clear data.',
-      message: 'This endpoint is restricted to system administrators'
-    });
-  }
   
   if (confirm !== 'CLEAR_ALL_TRANSACTIONS') {
     return res.status(400).json({ 
@@ -2494,8 +2473,7 @@ app.delete('/api/admin/clear-transactions', authenticateToken, (req, res) => {
       .then(() => {
         res.json({ 
           message: 'All transactions cleared successfully',
-          timestamp: new Date().toISOString(),
-          protection: 'Admin operation logged'
+          timestamp: new Date().toISOString()
         });
       })
       .catch(err => {
@@ -2507,25 +2485,16 @@ app.delete('/api/admin/clear-transactions', authenticateToken, (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Error clearing transactions' });
       }
-      res.json({ 
-        message: 'All transactions cleared successfully',
-        timestamp: new Date().toISOString(),
-        protection: 'Admin operation logged'
-      });
+              res.json({ 
+          message: 'All transactions cleared successfully',
+          timestamp: new Date().toISOString()
+        });
     });
   }
 });
 
 app.delete('/api/admin/clear-share-lots', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
   const { confirm } = req.body;
-  
-  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
-    return res.status(403).json({ 
-      error: 'Access denied. Only admin users can clear data.',
-      message: 'This endpoint is restricted to system administrators'
-    });
-  }
   
   if (confirm !== 'CLEAR_ALL_SHARE_LOTS') {
     return res.status(400).json({ 
@@ -2539,8 +2508,7 @@ app.delete('/api/admin/clear-share-lots', authenticateToken, (req, res) => {
       .then(() => {
         res.json({ 
           message: 'All share lots cleared successfully',
-          timestamp: new Date().toISOString(),
-          protection: 'Admin operation logged'
+          timestamp: new Date().toISOString()
         });
       })
       .catch(err => {
@@ -2552,25 +2520,16 @@ app.delete('/api/admin/clear-share-lots', authenticateToken, (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Error clearing share lots' });
       }
-      res.json({ 
-        message: 'All share lots cleared successfully',
-        timestamp: new Date().toISOString(),
-        protection: 'Admin operation logged'
-      });
+              res.json({ 
+          message: 'All share lots cleared successfully',
+          timestamp: new Date().toISOString()
+        });
     });
   }
 });
 
 app.delete('/api/admin/clear-stocks', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
   const { confirm } = req.body;
-  
-  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
-    return res.status(403).json({ 
-      error: 'Access denied. Only admin users can clear data.',
-      message: 'This endpoint is restricted to system administrators'
-    });
-  }
   
   if (confirm !== 'CLEAR_ALL_STOCKS') {
     return res.status(400).json({ 
@@ -2584,8 +2543,7 @@ app.delete('/api/admin/clear-stocks', authenticateToken, (req, res) => {
       .then(() => {
         res.json({ 
           message: 'All stocks cleared successfully',
-          timestamp: new Date().toISOString(),
-          protection: 'Admin operation logged'
+          timestamp: new Date().toISOString()
         });
       })
       .catch(err => {
@@ -2597,25 +2555,16 @@ app.delete('/api/admin/clear-stocks', authenticateToken, (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Error clearing stocks' });
       }
-      res.json({ 
-        message: 'All stocks cleared successfully',
-        timestamp: new Date().toISOString(),
-        protection: 'Admin operation logged'
-      });
+              res.json({ 
+          message: 'All stocks cleared successfully',
+          timestamp: new Date().toISOString()
+        });
     });
   }
 });
 
 app.delete('/api/admin/clear-users', authenticateToken, (req, res) => {
-  const userId = req.user.userId;
   const { confirm } = req.body;
-  
-  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
-    return res.status(403).json({ 
-      error: 'Access denied. Only admin users can clear data.',
-      message: 'This endpoint is restricted to system administrators'
-    });
-  }
   
   if (confirm !== 'CLEAR_NON_ADMIN_USERS') {
     return res.status(400).json({ 
@@ -2630,8 +2579,7 @@ app.delete('/api/admin/clear-users', authenticateToken, (req, res) => {
       .then(() => {
         res.json({ 
           message: 'Non-admin users cleared successfully',
-          timestamp: new Date().toISOString(),
-          protection: 'Admin user preserved'
+          timestamp: new Date().toISOString()
         });
       })
       .catch(err => {
@@ -2643,11 +2591,10 @@ app.delete('/api/admin/clear-users', authenticateToken, (req, res) => {
       if (err) {
         return res.status(500).json({ error: 'Error clearing users' });
       }
-      res.json({ 
-        message: 'Non-admin users cleared successfully',
-        timestamp: new Date().toISOString(),
-        protection: 'Admin user preserved'
-      });
+              res.json({ 
+          message: 'Non-admin users cleared successfully',
+          timestamp: new Date().toISOString()
+        });
     });
   }
 });
