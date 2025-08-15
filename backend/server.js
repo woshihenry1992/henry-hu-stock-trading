@@ -2359,7 +2359,7 @@ app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
   const userId = req.user.userId;
   
   // Only allow admin users (you) to export all data
-  if (userId !== 1) { // Assuming your user ID is 1
+  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
     return res.status(403).json({ 
       error: 'Access denied. Only admin users can export all data.',
       message: 'This endpoint is restricted to system administrators'
@@ -2451,7 +2451,7 @@ app.delete('/api/admin/clear-transactions', authenticateToken, (req, res) => {
   const { confirm } = req.body;
   
   // Only allow admin users (you) to clear data
-  if (userId !== 1) {
+  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
     return res.status(403).json({ 
       error: 'Access denied. Only admin users can clear data.',
       message: 'This endpoint is restricted to system administrators'
@@ -2496,7 +2496,7 @@ app.delete('/api/admin/clear-share-lots', authenticateToken, (req, res) => {
   const userId = req.user.userId;
   const { confirm } = req.body;
   
-  if (userId !== 1) {
+  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
     return res.status(403).json({ 
       error: 'Access denied. Only admin users can clear data.',
       message: 'This endpoint is restricted to system administrators'
@@ -2541,7 +2541,7 @@ app.delete('/api/admin/clear-stocks', authenticateToken, (req, res) => {
   const userId = req.user.userId;
   const { confirm } = req.body;
   
-  if (userId !== 1) {
+  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
     return res.status(403).json({ 
       error: 'Access denied. Only admin users can clear data.',
       message: 'This endpoint is restricted to system administrators'
@@ -2586,7 +2586,7 @@ app.delete('/api/admin/clear-users', authenticateToken, (req, res) => {
   const userId = req.user.userId;
   const { confirm } = req.body;
   
-  if (userId !== 1) {
+  if (userId !== 1 && userId !== 13) { // Allow both user ID 1 and 13 (you)
     return res.status(403).json({ 
       error: 'Access denied. Only admin users can clear data.',
       message: 'This endpoint is restricted to system administrators'
