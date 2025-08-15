@@ -1,0 +1,25 @@
+{
+  "name": "stock-trading-backup-system",
+  "version": "1.0.0",
+  "description": "Automated daily backup system for Stock Trading App",
+  "main": "backup_script.js",
+  "scripts": {
+    "backup": "node backup_script.js",
+    "test-backup": "node backup_script.js",
+    "install-deps": "npm install",
+    "setup": "npm run install-deps && mkdir -p backups"
+  },
+  "keywords": ["backup", "automation", "database", "stock-trading"],
+  "author": "Henry Hu",
+  "license": "MIT",
+  "dependencies": {
+    "nodemailer": "^6.9.7"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/woshihenry1992/henry-hu-stock-trading.git"
+  }
+}

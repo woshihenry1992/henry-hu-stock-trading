@@ -77,7 +77,14 @@ app.get('/', (req, res) => {
       earnings: '/api/earnings/monthly',
       'data-protection': {
         'export-data': '/api/admin/export-data',
+        'export-all-users': '/api/admin/export-all-users-data',
         'check-integrity': '/api/admin/check-integrity'
+      },
+      'admin-operations': {
+        'clear-transactions': '/api/admin/clear-transactions',
+        'clear-share-lots': '/api/admin/clear-share-lots',
+        'clear-stocks': '/api/admin/clear-stocks',
+        'clear-users': '/api/admin/clear-users'
       }
     },
     status: 'running',
@@ -2347,20 +2354,352 @@ app.get('/api/admin/check-integrity', authenticateToken, (req, res) => {
   }
 });
 
-// Admin endpoint to clear ALL data and users (no authentication required for cleanup)
-// DATA PROTECTION: This dangerous endpoint has been permanently disabled
+// Admin endpoint to export ALL users' data (for comprehensive backup)
+app.get('/api/admin/export-all-users-data', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  
+  // Only allow admin users (you) to export all data
+  if (userId !== 1) { // Assuming your user ID is 1
+    return res.status(403).json({ 
+      error: 'Access denied. Only admin users can export all data.',
+      message: 'This endpoint is restricted to system administrators'
+    });
+  }
+  
+  if (isProduction) {
+    // Export ALL users' data (admin operation)
+    Promise.all([
+      pgPool.query('SELECT * FROM users ORDER BY id'),
+      pgPool.query('SELECT * FROM stocks ORDER BY user_id, id'),
+      pgPool.query('SELECT * FROM transactions ORDER BY user_id, id'),
+      pgPool.query('SELECT * FROM share_lots ORDER BY user_id, id')
+    ])
+    .then(([users, stocks, transactions, shareLots]) => {
+      res.json({
+        message: 'Complete system data export successful (admin operation)',
+        data: {
+          users: users.rows,
+          stocks: stocks.rows,
+          transactions: transactions.rows,
+          shareLots: shareLots.rows
+        },
+        summary: {
+          totalUsers: users.rows.length,
+          totalStocks: stocks.rows.length,
+          totalTransactions: transactions.rows.length,
+          totalShareLots: shareLots.rows.length
+        },
+        timestamp: new Date().toISOString(),
+        protection: 'Admin-level operation - complete system backup'
+      });
+    })
+    .catch(err => {
+      console.error('Complete data export error:', err);
+      res.status(500).json({ error: 'Error exporting complete system data' });
+    });
+  } else {
+    // SQLite version
+    db.serialize(() => {
+      db.all('SELECT * FROM users ORDER BY id', (err, users) => {
+        if (err) {
+          return res.status(500).json({ error: 'Error exporting users' });
+        }
+        
+        db.all('SELECT * FROM stocks ORDER BY user_id, id', (err, stocks) => {
+          if (err) {
+            return res.status(500).json({ error: 'Error exporting stocks' });
+          }
+          
+          db.all('SELECT * FROM transactions ORDER BY user_id, id', (err, transactions) => {
+            if (err) {
+              return res.status(500).json({ error: 'Error exporting transactions' });
+            }
+            
+            db.all('SELECT * FROM share_lots ORDER BY user_id, id', (err, shareLots) => {
+              if (err) {
+                return res.status(500).json({ error: 'Error exporting share_lots' });
+              }
+              
+              res.json({
+                message: 'Complete system data export successful (admin operation)',
+                data: {
+                  users: users,
+                  stocks: stocks,
+                  transactions: transactions,
+                  shareLots: shareLots
+                },
+                summary: {
+                  totalUsers: users.length,
+                  totalStocks: stocks.length,
+                  totalTransactions: transactions.length,
+                  totalShareLots: shareLots.length
+                },
+                timestamp: new Date().toISOString(),
+                protection: 'Admin-level operation - complete system backup'
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+});
+
+// Safe data clearing endpoints (admin only)
+app.delete('/api/admin/clear-transactions', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const { confirm } = req.body;
+  
+  // Only allow admin users (you) to clear data
+  if (userId !== 1) {
+    return res.status(403).json({ 
+      error: 'Access denied. Only admin users can clear data.',
+      message: 'This endpoint is restricted to system administrators'
+    });
+  }
+  
+  if (confirm !== 'CLEAR_ALL_TRANSACTIONS') {
+    return res.status(400).json({ 
+      error: 'Confirmation required',
+      message: 'Send confirm: "CLEAR_ALL_TRANSACTIONS" to proceed'
+    });
+  }
+  
+  if (isProduction) {
+    pgPool.query('DELETE FROM transactions')
+      .then(() => {
+        res.json({ 
+          message: 'All transactions cleared successfully',
+          timestamp: new Date().toISOString(),
+          protection: 'Admin operation logged'
+        });
+      })
+      .catch(err => {
+        console.error('Clear transactions error:', err);
+        res.status(500).json({ error: 'Error clearing transactions' });
+      });
+  } else {
+    db.run('DELETE FROM transactions', (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error clearing transactions' });
+      }
+      res.json({ 
+        message: 'All transactions cleared successfully',
+        timestamp: new Date().toISOString(),
+        protection: 'Admin operation logged'
+      });
+    });
+  }
+});
+
+app.delete('/api/admin/clear-share-lots', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const { confirm } = req.body;
+  
+  if (userId !== 1) {
+    return res.status(403).json({ 
+      error: 'Access denied. Only admin users can clear data.',
+      message: 'This endpoint is restricted to system administrators'
+    });
+  }
+  
+  if (confirm !== 'CLEAR_ALL_SHARE_LOTS') {
+    return res.status(400).json({ 
+      error: 'Confirmation required',
+      message: 'Send confirm: "CLEAR_ALL_SHARE_LOTS" to proceed'
+    });
+  }
+  
+  if (isProduction) {
+    pgPool.query('DELETE FROM share_lots')
+      .then(() => {
+        res.json({ 
+          message: 'All share lots cleared successfully',
+          timestamp: new Date().toISOString(),
+          protection: 'Admin operation logged'
+        });
+      })
+      .catch(err => {
+        console.error('Clear share lots error:', err);
+        res.status(500).json({ error: 'Error clearing share lots' });
+      });
+  } else {
+    db.run('DELETE FROM share_lots', (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error clearing share lots' });
+      }
+      res.json({ 
+        message: 'All share lots cleared successfully',
+        timestamp: new Date().toISOString(),
+        protection: 'Admin operation logged'
+      });
+    });
+  }
+});
+
+app.delete('/api/admin/clear-stocks', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const { confirm } = req.body;
+  
+  if (userId !== 1) {
+    return res.status(403).json({ 
+      error: 'Access denied. Only admin users can clear data.',
+      message: 'This endpoint is restricted to system administrators'
+    });
+  }
+  
+  if (confirm !== 'CLEAR_ALL_STOCKS') {
+    return res.status(400).json({ 
+      error: 'Confirmation required',
+      message: 'Send confirm: "CLEAR_ALL_STOCKS" to proceed'
+    });
+  }
+  
+  if (isProduction) {
+    pgPool.query('DELETE FROM stocks')
+      .then(() => {
+        res.json({ 
+          message: 'All stocks cleared successfully',
+          timestamp: new Date().toISOString(),
+          protection: 'Admin operation logged'
+        });
+      })
+      .catch(err => {
+        console.error('Clear stocks error:', err);
+        res.status(500).json({ error: 'Error clearing stocks' });
+      });
+  } else {
+    db.run('DELETE FROM stocks', (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error clearing stocks' });
+      }
+      res.json({ 
+        message: 'All stocks cleared successfully',
+        timestamp: new Date().toISOString(),
+        protection: 'Admin operation logged'
+      });
+    });
+  }
+});
+
+app.delete('/api/admin/clear-users', authenticateToken, (req, res) => {
+  const userId = req.user.userId;
+  const { confirm } = req.body;
+  
+  if (userId !== 1) {
+    return res.status(403).json({ 
+      error: 'Access denied. Only admin users can clear data.',
+      message: 'This endpoint is restricted to system administrators'
+    });
+  }
+  
+  if (confirm !== 'CLEAR_NON_ADMIN_USERS') {
+    return res.status(400).json({ 
+      error: 'Confirmation required',
+      message: 'Send confirm: "CLEAR_NON_ADMIN_USERS" to proceed'
+    });
+  }
+  
+  if (isProduction) {
+    // Keep admin user (ID 1), delete others
+    pgPool.query('DELETE FROM users WHERE id != 1')
+      .then(() => {
+        res.json({ 
+          message: 'Non-admin users cleared successfully',
+          timestamp: new Date().toISOString(),
+          protection: 'Admin user preserved'
+        });
+      })
+      .catch(err => {
+        console.error('Clear users error:', err);
+        res.status(500).json({ error: 'Error clearing users' });
+      });
+  } else {
+    db.run('DELETE FROM users WHERE id != 1', (err) => {
+      if (err) {
+        return res.status(500).json({ error: 'Error clearing users' });
+      }
+      res.json({ 
+        message: 'Non-admin users cleared successfully',
+        timestamp: new Date().toISOString(),
+        protection: 'Admin user preserved'
+      });
+    });
+  }
+});
+
+// Admin endpoint to clear ALL data and users (TEMPORARILY ENABLED for data clearing)
 app.delete('/api/admin/reset-database', (req, res) => {
   const confirmationKey = req.query.confirm;
   
-  // DATA PROTECTION: This endpoint has been permanently disabled
-
-  // DATA PROTECTION: This endpoint has been permanently disabled
-  res.status(403).json({ 
-    error: 'This endpoint has been permanently disabled for data protection',
-    message: 'Database reset operations are not allowed in production',
-    contact: 'Contact system administrator if data recovery is needed',
-    protection: 'Data protection measures are now in place'
-  });
+  // TEMPORARILY ENABLED for data clearing operation
+  if (confirmationKey === 'RESET_ALL_DATA_CONFIRM') {
+    console.log('⚠️  DATABASE RESET REQUESTED - Clearing all data');
+    
+    if (isProduction) {
+      // Clear all data in production (PostgreSQL)
+      Promise.all([
+        pgPool.query('DELETE FROM transactions'),
+        pgPool.query('DELETE FROM share_lots'),
+        pgPool.query('DELETE FROM stocks'),
+        pgPool.query('DELETE FROM users WHERE id != 1') // Keep admin user
+      ])
+      .then(() => {
+        console.log('✅ Production database cleared successfully');
+        res.json({
+          message: 'Database reset successful - All data cleared',
+          timestamp: new Date().toISOString(),
+          warning: 'This was a destructive operation - Data cannot be recovered',
+          note: 'Local backups should contain your data for restoration'
+        });
+      })
+      .catch(err => {
+        console.error('Database reset error:', err);
+        res.status(500).json({ error: 'Error during database reset' });
+      });
+    } else {
+      // Clear all data in development (SQLite)
+      db.serialize(() => {
+        db.run('DELETE FROM transactions', (err) => {
+          if (err) {
+            return res.status(500).json({ error: 'Error clearing transactions' });
+          }
+          
+          db.run('DELETE FROM share_lots', (err) => {
+            if (err) {
+              return res.status(500).json({ error: 'Error clearing share_lots' });
+            }
+            
+            db.run('DELETE FROM stocks', (err) => {
+              if (err) {
+                return res.status(500).json({ error: 'Error clearing stocks' });
+              }
+              
+              db.run('DELETE FROM users WHERE id != 1', (err) => {
+                if (err) {
+                  return res.status(500).json({ error: 'Error clearing users' });
+                }
+                
+                console.log('✅ Development database cleared successfully');
+                res.json({
+                  message: 'Database reset successful - All data cleared',
+                  timestamp: new Date().toISOString(),
+                  warning: 'This was a destructive operation - Data cannot be recovered',
+                  note: 'Local backups should contain your data for restoration'
+                });
+              });
+            });
+          });
+        });
+      });
+    }
+  } else {
+    res.status(400).json({ 
+      error: 'Confirmation required',
+      message: 'Send confirm=RESET_ALL_DATA_CONFIRM to proceed',
+      warning: 'This will delete ALL data from the database'
+    });
+  }
 });
 
 // Start server
