@@ -9,7 +9,8 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
     transaction_type: 'buy', // Always buy
     shares: '',
     price_per_share: '',
-    transaction_date: new Date().toISOString().split('T')[0] // Default to today
+    transaction_date: new Date().toISOString().split('T')[0], // Default to today
+    transaction_time: '00:00' // Default time
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -50,13 +51,17 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
 
     try {
       const token = localStorage.getItem('token');
+      // Combine date and time into a datetime string
+      const dateTimeString = `${formData.transaction_date}T${formData.transaction_time}:00`;
+      const transactionDateTime = new Date(dateTimeString).toISOString();
+      
       const response = await axios.post(API_ENDPOINTS.TRANSACTIONS, 
         {
           stock_id: selectedStockId,
           transaction_type: 'buy', // Always buy
           shares: parseInt(formData.shares),
           price_per_share: parseFloat(formData.price_per_share),
-          transaction_date: new Date(formData.transaction_date).toISOString()
+          transaction_date: transactionDateTime
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -112,6 +117,21 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
             id="transaction_date"
             name="transaction_date"
             value={formData.transaction_date}
+            onChange={handleChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            required
+          />
+        </div>
+
+        <div>
+          <label htmlFor="transaction_time" className="block text-sm font-medium text-gray-700 mb-2">
+            Transaction Time (Hours:Minutes)
+          </label>
+          <input
+            type="time"
+            id="transaction_time"
+            name="transaction_time"
+            value={formData.transaction_time}
             onChange={handleChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             required
