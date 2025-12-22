@@ -257,15 +257,15 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-4">
+    <div className="p-6 flex flex-col max-h-[85vh]">
+      <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <h3 className="text-lg font-semibold text-gray-900">
           Sell Shares - {stock.stock_name}
         </h3>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto pr-2 flex-1 min-h-0">
         {/* Select All */}
         <div className="flex items-center space-x-2">
           <input
@@ -510,7 +510,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
           </div>
         )}
 
-        <div className="flex space-x-3">
+        <div className="flex space-x-3 flex-shrink-0 pt-4">
           <button
             type="submit"
             disabled={submitting || selectedLots.length === 0 || !sellPrice}
