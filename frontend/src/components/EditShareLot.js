@@ -77,7 +77,7 @@ const EditShareLot = ({ lot, onClose, onUpdate }) => {
             <strong>Shares:</strong> {lot.shares}
           </div>
           <div className="text-sm" style={{ color: theme.colors.textSecondary }}>
-            <strong>Current Buy Date:</strong> {lot.buy_date ? new Date(lot.buy_date).toLocaleDateString() : 'N/A'}
+            <strong>Current Buy Date:</strong> {lot.buy_date ? `${new Date(lot.buy_date).toLocaleDateString()} at ${new Date(lot.buy_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}` : 'N/A'}
           </div>
           <div className="text-sm" style={{ color: theme.colors.textSecondary }}>
             <strong>Current Buy Price:</strong> ${lot.buy_price_per_share}

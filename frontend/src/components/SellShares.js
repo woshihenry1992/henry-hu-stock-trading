@@ -332,7 +332,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                     </span>
                   </div>
                   <div className="text-xs" style={{ color: theme.colors.textSecondary }}>
-                    Bought on {new Date(lot.buy_date).toLocaleDateString()}
+                    Bought on {new Date(lot.buy_date).toLocaleDateString()} at {new Date(lot.buy_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                   </div>
                 </div>
                 <div className="flex space-x-2">
@@ -537,7 +537,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                 <strong>Buy Price:</strong> ${lotToDelete.buy_price_per_share}
               </div>
               <div className="text-sm text-gray-700">
-                <strong>Buy Date:</strong> {new Date(lotToDelete.buy_date).toLocaleDateString()}
+                <strong>Buy Date:</strong> {new Date(lotToDelete.buy_date).toLocaleDateString()} at {new Date(lotToDelete.buy_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
               </div>
             </div>
 
