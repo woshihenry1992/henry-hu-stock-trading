@@ -9,6 +9,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   const [selectedLots, setSelectedLots] = useState([]);
   const [sellPrice, setSellPrice] = useState('');
   const [sellDate, setSellDate] = useState(new Date().toISOString().split('T')[0]);
+  const [sellTime, setSellTime] = useState('00:00');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -68,11 +69,15 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
 
     try {
       const token = localStorage.getItem('token');
+      // Combine date and time into a datetime string
+      const dateTimeString = `${sellDate}T${sellTime}:00`;
+      const sellDateTime = new Date(dateTimeString).toISOString();
+      
       const response = await axios.post(API_ENDPOINTS.SELL_LOTS(stock.id), 
         {
           lotIds: selectedLots,
           sellPricePerShare: parseFloat(sellPrice),
-          sellDate: new Date(sellDate).toISOString()
+          sellDate: sellDateTime
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -393,6 +398,18 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
               required
             />
           </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Sell Time (Hours:Minutes)
+          </label>
+          <input
+            type="time"
+            value={sellTime}
+            onChange={(e) => setSellTime(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            required
+          />
         </div>
 
         {/* Selling Preview Panel */}
