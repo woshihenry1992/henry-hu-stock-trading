@@ -21,8 +21,8 @@ const CONFIG = {
   
   // API settings
   API_BASE_URL: 'https://henry-hu-stock-trading.onrender.com',
-  USERNAME: 'henry',
-  PASSWORD: 'Woshihenry8588$',
+  USERNAME: 'henry1',
+  PASSWORD: 'SecurePass123$',
   
   // Email notifications (optional)
   EMAIL_ENABLED: false,
