@@ -19,6 +19,14 @@ const Portfolio = () => {
   const [transactionType, setTransactionType] = useState('buy');
   const [editingStock, setEditingStock] = useState(null);
   const [newStockName, setNewStockName] = useState('');
+
+  // Track user-entered current prices per stock (by stock.id)
+  const [currentPrices, setCurrentPrices] = useState({});
+
+  // Filter and sort settings for percentage drop
+  const [dropFilter, setDropFilter] = useState('all'); // 'all', '0', '5', '10', '20', '30'
+  const [dropSort, setDropSort] = useState('none'); // 'none', 'asc', 'desc'
+
   const { theme } = useTheme();
 
   const fetchPortfolio = async () => {
@@ -110,6 +118,30 @@ const Portfolio = () => {
     setNewStockName('');
   };
 
+  // Handle current price input change
+  const handleCurrentPriceChange = (stockId, value) => {
+    setCurrentPrices(prev => ({
+      ...prev,
+      [stockId]: value
+    }));
+  };
+
+  // Calculate percentage drop for a given stock based on current price vs average buy price
+  // Returns null if current price is not set or invalid
+  const getPercentageDrop = (stock) => {
+    const currentPriceRaw = currentPrices[stock.id];
+    const currentPrice = parseFloat(currentPriceRaw);
+    const avgBuy = parseFloat(stock.avg_buy_price);
+
+    if (!currentPrice || !avgBuy || avgBuy === 0) {
+      return null;
+    }
+
+    // Positive value means price has dropped below average buy
+    const dropPercent = ((avgBuy - currentPrice) / avgBuy) * 100;
+    return dropPercent;
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -126,11 +158,101 @@ const Portfolio = () => {
     );
   }
 
+  // Apply drop-based filter and sorting
+  const enhancedPortfolio = (portfolio || [])
+    .map((stock) => {
+      const dropPercent = getPercentageDrop(stock);
+      return { ...stock, dropPercent };
+    })
+    .filter((stock) => {
+      if (dropFilter === 'all') return true;
+
+      const threshold = parseFloat(dropFilter);
+      if (Number.isNaN(threshold)) return true;
+
+      // If no current price / drop is set, exclude when filtering by threshold
+      if (stock.dropPercent === null || stock.dropPercent === undefined) return false;
+
+      // Keep stocks whose drop is greater than or equal to the threshold
+      return stock.dropPercent >= threshold;
+    })
+    .sort((a, b) => {
+      if (dropSort === 'none') return 0;
+
+      const aDrop = a.dropPercent;
+      const bDrop = b.dropPercent;
+
+      // Stocks without drop info should be pushed to the end
+      if (aDrop == null && bDrop == null) return 0;
+      if (aDrop == null) return 1;
+      if (bDrop == null) return -1;
+
+      if (dropSort === 'asc') {
+        return aDrop - bDrop;
+      }
+      if (dropSort === 'desc') {
+        return bDrop - aDrop;
+      }
+      return 0;
+    });
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold" style={{ color: theme.colors.text }}>Your Portfolio</h2>
       </div>
+
+      {/* Percentage Drop Filters & Sorting */}
+      {portfolio.length > 0 && (
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: theme.colors.textSecondary }}>
+              Filter by Drop vs Avg Buy
+            </label>
+            <select
+              value={dropFilter}
+              onChange={(e) => setDropFilter(e.target.value)}
+              className="px-3 py-2 border rounded-md text-sm"
+              style={{
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surface,
+                color: theme.colors.text
+              }}
+            >
+              <option value="all">All stocks</option>
+              <option value="0">Drop ≥ 0%</option>
+              <option value="5">Drop ≥ 5%</option>
+              <option value="10">Drop ≥ 10%</option>
+              <option value="20">Drop ≥ 20%</option>
+              <option value="30">Drop ≥ 30%</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: theme.colors.textSecondary }}>
+              Sort by Drop
+            </label>
+            <select
+              value={dropSort}
+              onChange={(e) => setDropSort(e.target.value)}
+              className="px-3 py-2 border rounded-md text-sm"
+              style={{
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surface,
+                color: theme.colors.text
+              }}
+            >
+              <option value="none">No drop sorting</option>
+              <option value="desc">Largest drop first</option>
+              <option value="asc">Smallest drop first</option>
+            </select>
+          </div>
+
+          <div className="text-xs text-gray-500 mt-2">
+            Enter a <span className="font-semibold">Current Price</span> for each stock card to see its drop and enable filtering.
+          </div>
+        </div>
+      )}
 
       {portfolio.length === 0 ? (
         <div className="border rounded-md p-8 text-center" style={{ 
@@ -142,7 +264,17 @@ const Portfolio = () => {
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {(portfolio || []).map((stock) => (
+          {enhancedPortfolio.map((stock) => {
+            const dropPercent = stock.dropPercent;
+            const hasDrop = dropPercent !== null && dropPercent !== undefined;
+            const dropIsLoss = hasDrop && dropPercent > 0;
+            const dropDisplayColor = !hasDrop
+              ? theme.colors.textSecondary
+              : dropIsLoss
+                ? theme.colors.error
+                : theme.colors.success;
+
+            return (
             <div key={stock.id} className="rounded-lg shadow-md p-6" style={{ backgroundColor: theme.colors.card }}>
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-2 flex-1">
@@ -237,6 +369,37 @@ const Portfolio = () => {
                     ${stock.actual_earned}
                   </span>
                 </div>
+
+                {/* Current Price & Percentage Drop */}
+                <div className="pt-2 border-t" style={{ borderColor: theme.colors.border }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span style={{ color: theme.colors.textSecondary }}>Current Price ($):</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={currentPrices[stock.id] ?? ''}
+                      onChange={(e) => handleCurrentPriceChange(stock.id, e.target.value)}
+                      className="w-24 px-2 py-1 border rounded text-right text-xs"
+                      style={{
+                        borderColor: theme.colors.border,
+                        backgroundColor: theme.colors.surface,
+                        color: theme.colors.text
+                      }}
+                      placeholder="e.g. 40"
+                    />
+                  </div>
+                  {hasDrop && (
+                    <div className="flex justify-between">
+                      <span style={{ color: theme.colors.textSecondary }}>Drop vs Avg Buy:</span>
+                      <span className="font-medium" style={{ color: dropDisplayColor }}>
+                        {dropIsLoss
+                          ? `${dropPercent.toFixed(2)}% drop`
+                          : `${Math.abs(dropPercent).toFixed(2)}% gain`}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 flex space-x-2">
@@ -266,7 +429,7 @@ const Portfolio = () => {
                 </button>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 
