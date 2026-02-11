@@ -22,6 +22,8 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   const [deletingLot, setDeletingLot] = useState(null); // Track which lot is being deleted
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Show delete confirmation
   const [lotToDelete, setLotToDelete] = useState(null); // Lot to be deleted
+  // Per-lot current price tracking (kept in page memory only)
+  const [lotCurrentPrices, setLotCurrentPrices] = useState({});
   const { theme } = useTheme();
 
   const fetchShareLots = useCallback(async () => {
@@ -117,6 +119,27 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
     
     const earningsText = estimatedEarnings >= 0 ? `earn $${estimatedEarnings.toFixed(2)}` : `lose $${Math.abs(estimatedEarnings).toFixed(2)}`;
     return `By selling ${totalSelectedShares} shares at $${sellPriceNum.toFixed(2)} per share, you will ${earningsText} (after selling fees).`;
+  };
+
+  // Track current price per individual lot and compute its drop vs buy price
+  const handleLotCurrentPriceChange = (lotId, value) => {
+    setLotCurrentPrices(prev => ({
+      ...prev,
+      [lotId]: value
+    }));
+  };
+
+  const getLotDropPercent = (lot) => {
+    const raw = lotCurrentPrices[lot.id];
+    const current = parseFloat(raw);
+    const buyPrice = parseFloat(lot.buy_price_per_share);
+
+    if (!current || !buyPrice || buyPrice === 0) {
+      return null;
+    }
+
+    // Positive value means price has dropped below buy price
+    return ((buyPrice - current) / buyPrice) * 100;
   };
 
   // Sort share lots based on current sort settings
@@ -320,8 +343,19 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
 
         {/* Share Lots List */}
         <div key={refreshKey} className="max-h-64 overflow-y-auto border rounded-md" style={{ borderColor: theme.colors.border }}>
-          {(sortedShareLots || []).map((lot) => (
-                          <div key={lot.id} className={`flex items-center space-x-3 p-3 border-b last:border-b-0 ${updatingLot === lot.id ? 'bg-yellow-50' : ''}`} style={{ borderColor: theme.colors.border }}>
+          {(sortedShareLots || []).map((lot) => {
+            const lotDropPercent = getLotDropPercent(lot);
+            const hasLotDrop = lotDropPercent !== null && lotDropPercent !== undefined;
+            const lotDropIsLoss = hasLotDrop && lotDropPercent > 0;
+
+            return (
+              <div
+                key={lot.id}
+                className={`flex items-center space-x-3 p-3 border-b last:border-b-0 ${
+                  updatingLot === lot.id ? 'bg-yellow-50' : ''
+                }`}
+                style={{ borderColor: theme.colors.border }}
+              >
                 <input
                   type="checkbox"
                   checked={selectedLots.includes(lot.id)}
@@ -331,14 +365,57 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                 <div className="flex-1">
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium" style={{ color: theme.colors.text }}>
-                      {lot.shares} shares {updatingLot === lot.id && <span className="text-xs text-yellow-600">(updating...)</span>}
+                      {lot.shares} shares{' '}
+                      {updatingLot === lot.id && (
+                        <span className="text-xs text-yellow-600">(updating...)</span>
+                      )}
                     </span>
                     <span className="text-sm" style={{ color: theme.colors.textSecondary }}>
                       Bought at ${lot.buy_price_per_share}
                     </span>
                   </div>
                   <div className="text-xs" style={{ color: theme.colors.textSecondary }}>
-                    Bought on {new Date(lot.buy_date).toLocaleDateString()} at {new Date(lot.buy_date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    Bought on {new Date(lot.buy_date).toLocaleDateString()} at{' '}
+                    {new Date(lot.buy_date).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false
+                    })}
+                  </div>
+                  {/* Per-lot current price and drop vs buy price */}
+                  <div
+                    className="mt-1 flex items-center justify-between text-xs"
+                    style={{ color: theme.colors.textSecondary }}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span>Current price ($):</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={lotCurrentPrices[lot.id] ?? ''}
+                        onChange={(e) => handleLotCurrentPriceChange(lot.id, e.target.value)}
+                        className="w-20 px-2 py-1 border rounded text-right"
+                        style={{
+                          borderColor: theme.colors.border,
+                          backgroundColor: theme.colors.surface,
+                          color: theme.colors.text
+                        }}
+                        placeholder={lot.buy_price_per_share}
+                      />
+                    </div>
+                    {hasLotDrop && (
+                      <span
+                        className="font-medium"
+                        style={{
+                          color: lotDropIsLoss ? theme.colors.error : theme.colors.success
+                        }}
+                      >
+                        {lotDropIsLoss
+                          ? `${lotDropPercent.toFixed(2)}% drop`
+                          : `${Math.abs(lotDropPercent).toFixed(2)}% gain`}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex space-x-2">
@@ -351,7 +428,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                       backgroundColor: theme.colors.surface,
                       color: theme.colors.primary,
                       borderColor: theme.colors.primary,
-                      opacity: (updatingLot === lot.id || deletingLot === lot.id) ? 0.5 : 1
+                      opacity: updatingLot === lot.id || deletingLot === lot.id ? 0.5 : 1
                     }}
                   >
                     {updatingLot === lot.id ? 'Updating...' : 'Edit'}
@@ -365,14 +442,15 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                       backgroundColor: theme.colors.surface,
                       color: theme.colors.error,
                       borderColor: theme.colors.error,
-                      opacity: (updatingLot === lot.id || deletingLot === lot.id) ? 0.5 : 1
+                      opacity: updatingLot === lot.id || deletingLot === lot.id ? 0.5 : 1
                     }}
                   >
                     {deletingLot === lot.id ? 'Deleting...' : 'Delete'}
                   </button>
                 </div>
               </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Sell Details */}
