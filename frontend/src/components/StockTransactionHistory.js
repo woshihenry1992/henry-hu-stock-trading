@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../config/api';
 
@@ -11,11 +11,7 @@ const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
   const [deleting, setDeleting] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'transaction_date', direction: 'desc' });
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [stock]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
@@ -57,7 +53,11 @@ const StockTransactionHistory = ({ stock, onClose, onPortfolioRefresh }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [stock.id]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-US', {

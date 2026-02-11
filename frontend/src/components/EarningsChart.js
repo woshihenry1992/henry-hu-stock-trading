@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -30,12 +30,10 @@ ChartJS.register(
 );
 
 const EarningsChart = () => {
-  const [earningsData, setEarningsData] = useState(null);
   const [stockEarningsData, setStockEarningsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [viewMode, setViewMode] = useState('by-stock'); // Always use by-stock view
   const { theme } = useTheme();
 
   // Generate year options (from 2030 down to current year - 5)
@@ -45,7 +43,7 @@ const EarningsChart = () => {
     yearOptions.push(year);
   }
 
-  const fetchStockEarningsData = async () => {
+  const fetchStockEarningsData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -71,9 +69,9 @@ const EarningsChart = () => {
         setError('Failed to load stock earnings data. Please try again.');
       }
     }
-  };
+  }, [selectedYear]);
 
-  const fetchEarningsData = async () => {
+  const fetchEarningsData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -118,7 +116,6 @@ const EarningsChart = () => {
       console.log('Setting earnings data:', response.data);
       console.log('Total earnings:', response.data.totalEarnings);
       console.log('Monthly earnings count:', response.data.monthlyEarnings.length);
-      setEarningsData(response.data);
     } catch (err) {
       console.error('Error fetching earnings data:', err);
       console.error('Error response:', err.response);
@@ -136,7 +133,7 @@ const EarningsChart = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedYear]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -148,7 +145,7 @@ const EarningsChart = () => {
       setLoading(false);
     };
     fetchData();
-  }, [selectedYear]);
+  }, [selectedYear, fetchEarningsData, fetchStockEarningsData]);
 
   const handleYearChange = (e) => {
     setSelectedYear(parseInt(e.target.value));

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../config/api';
 
@@ -15,11 +15,7 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchStocks();
-  }, []);
-
-  const fetchStocks = async () => {
+  const fetchStocks = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(API_ENDPOINTS.STOCKS, {
@@ -35,7 +31,11 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
       setError('Failed to load stocks');
       setAvailableStocks([]); // Ensure it's always an array
     }
-  };
+  }, [selectedStockId]);
+
+  useEffect(() => {
+    fetchStocks();
+  }, [fetchStocks]);
 
   const handleChange = (e) => {
     setFormData({
@@ -55,7 +55,7 @@ const AddTransaction = ({ stock, onTransactionAdded, onClose }) => {
       const dateTimeString = `${formData.transaction_date}T${formData.transaction_time}:00`;
       const transactionDateTime = new Date(dateTimeString).toISOString();
       
-      const response = await axios.post(API_ENDPOINTS.TRANSACTIONS, 
+      await axios.post(API_ENDPOINTS.TRANSACTIONS, 
         {
           stock_id: selectedStockId,
           transaction_type: 'buy', // Always buy

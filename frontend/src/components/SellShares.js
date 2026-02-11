@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../config/api';
 import EditShareLot from './EditShareLot';
@@ -24,11 +24,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   const [lotToDelete, setLotToDelete] = useState(null); // Lot to be deleted
   const { theme } = useTheme();
 
-  useEffect(() => {
-    fetchShareLots();
-  }, [stock]);
-
-  const fetchShareLots = async () => {
+  const fetchShareLots = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get(API_ENDPOINTS.SHARE_LOTS(stock.id), {
@@ -44,7 +40,11 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [stock.id]);
+
+  useEffect(() => {
+    fetchShareLots();
+  }, [fetchShareLots]);
 
   const handleLotSelection = (lotId) => {
     setSelectedLots(prev => 
@@ -73,7 +73,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
       const dateTimeString = `${sellDate}T${sellTime}:00`;
       const sellDateTime = new Date(dateTimeString).toISOString();
       
-      const response = await axios.post(API_ENDPOINTS.SELL_LOTS(stock.id), 
+      await axios.post(API_ENDPOINTS.SELL_LOTS(stock.id), 
         {
           lotIds: selectedLots,
           sellPricePerShare: parseFloat(sellPrice),

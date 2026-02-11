@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import AddTransaction from './AddTransaction';
-import TransactionHistory from './TransactionHistory';
 import SellShares from './SellShares';
 import StockTransactionHistory from './StockTransactionHistory';
 import { useTheme } from '../contexts/ThemeContext';
@@ -13,10 +12,8 @@ const Portfolio = () => {
   const [error, setError] = useState('');
   const [selectedStock, setSelectedStock] = useState(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
-  const [showTransactionHistory, setShowTransactionHistory] = useState(false);
   const [showSellForm, setShowSellForm] = useState(false);
   const [showStockTransactionHistory, setShowStockTransactionHistory] = useState(false);
-  const [transactionType, setTransactionType] = useState('buy');
   const [editingStock, setEditingStock] = useState(null);
   const [newStockName, setNewStockName] = useState('');
 
@@ -60,7 +57,6 @@ const Portfolio = () => {
 
   const openTransactionForm = (stock, type = 'buy') => {
     setSelectedStock(stock);
-    setTransactionType(type);
     if (type === 'sell') {
       setShowSellForm(true);
     } else {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { useTheme } from '../contexts/ThemeContext';
 import { API_ENDPOINTS } from '../config/api';

@@ -38,7 +38,7 @@ const Register = ({ onRegister }) => {
     setLoading(true);
 
     try {
-      const response = await axios.post(API_ENDPOINTS.REGISTER, {
+      await axios.post(API_ENDPOINTS.REGISTER, {
         username: formData.username,
         password: formData.password
       });
