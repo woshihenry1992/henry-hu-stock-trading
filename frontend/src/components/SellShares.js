@@ -14,7 +14,7 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [editingLot, setEditingLot] = useState(null);
-  const [sortBy, setSortBy] = useState('date'); // 'date' or 'price'
+  const [sortBy, setSortBy] = useState('date'); // 'date', 'price', or 'percentage'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
   const [refreshKey, setRefreshKey] = useState(0); // Force refresh key
   const [updatingLot, setUpdatingLot] = useState(null); // Track which lot is being updated
@@ -22,8 +22,8 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   const [deletingLot, setDeletingLot] = useState(null); // Track which lot is being deleted
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false); // Show delete confirmation
   const [lotToDelete, setLotToDelete] = useState(null); // Lot to be deleted
-  // Per-lot current price tracking (kept in page memory only)
-  const [lotCurrentPrices, setLotCurrentPrices] = useState({});
+  // Global current price for this stock (kept in page memory only)
+  const [globalCurrentPrice, setGlobalCurrentPrice] = useState('');
   const { theme } = useTheme();
 
   const fetchShareLots = useCallback(async () => {
@@ -121,17 +121,9 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
     return `By selling ${totalSelectedShares} shares at $${sellPriceNum.toFixed(2)} per share, you will ${earningsText} (after selling fees).`;
   };
 
-  // Track current price per individual lot and compute its drop vs buy price
-  const handleLotCurrentPriceChange = (lotId, value) => {
-    setLotCurrentPrices(prev => ({
-      ...prev,
-      [lotId]: value
-    }));
-  };
-
+  // Compute drop % for a lot using global current price
   const getLotDropPercent = (lot) => {
-    const raw = lotCurrentPrices[lot.id];
-    const current = parseFloat(raw);
+    const current = parseFloat(globalCurrentPrice);
     const buyPrice = parseFloat(lot.buy_price_per_share);
 
     if (!current || !buyPrice || buyPrice === 0) {
@@ -144,8 +136,19 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
 
   // Sort share lots based on current sort settings
   const sortedShareLots = [...shareLots].sort((a, b) => {
+    if (sortBy === 'percentage') {
+      const aDrop = getLotDropPercent(a);
+      const bDrop = getLotDropPercent(b);
+      // Lots without drop go to end
+      if (aDrop == null && bDrop == null) return 0;
+      if (aDrop == null) return 1;
+      if (bDrop == null) return -1;
+      // Greatest drop to least = descending
+      if (sortOrder === 'desc') return bDrop - aDrop;
+      return aDrop - bDrop;
+    }
+
     let aValue, bValue;
-    
     if (sortBy === 'date') {
       aValue = new Date(a.buy_date);
       bValue = new Date(b.buy_date);
@@ -153,12 +156,11 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
       aValue = a.buy_price_per_share;
       bValue = b.buy_price_per_share;
     }
-    
+
     if (sortOrder === 'asc') {
       return aValue - bValue;
-    } else {
-      return bValue - aValue;
     }
+    return bValue - aValue;
   });
 
   const handleEditLot = (lot) => {
@@ -205,7 +207,8 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(newSortBy);
-      setSortOrder('asc');
+      // For percentage, default to greatest drop first (desc)
+      setSortOrder(newSortBy === 'percentage' ? 'desc' : 'asc');
     }
   };
 
@@ -281,10 +284,29 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
 
   return (
     <div className="p-6 flex flex-col max-h-[85vh]">
-      <div className="flex justify-between items-center mb-4 flex-shrink-0">
-        <h3 className="text-lg font-semibold text-gray-900">
-          Sell Shares - {stock.stock_name}
-        </h3>
+      <div className="flex justify-between items-center mb-4 flex-shrink-0 flex-wrap gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Sell Shares - {stock.stock_name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Current Price ($):</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={globalCurrentPrice}
+              onChange={(e) => setGlobalCurrentPrice(e.target.value)}
+              className="w-24 px-2 py-1.5 border border-gray-300 rounded-md text-sm"
+              placeholder="e.g. 22.50"
+              style={{
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surface,
+                color: theme.colors.text
+              }}
+            />
+          </div>
+        </div>
         <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
       </div>
 
@@ -339,6 +361,22 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
           >
             Price {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
           </button>
+          <button
+            type="button"
+            onClick={() => handleSortChange('percentage')}
+            className={`px-3 py-1 text-sm rounded-md border ${
+              sortBy === 'percentage' 
+                ? 'text-white' 
+                : 'text-gray-600'
+            }`}
+            style={{
+              backgroundColor: sortBy === 'percentage' ? theme.colors.primary : theme.colors.surface,
+              borderColor: theme.colors.border,
+              color: sortBy === 'percentage' ? 'white' : theme.colors.textSecondary
+            }}
+          >
+            Percentage {sortBy === 'percentage' && (sortOrder === 'asc' ? '↑' : '↓')}
+          </button>
         </div>
 
         {/* Share Lots List */}
@@ -382,29 +420,9 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                       hour12: false
                     })}
                   </div>
-                  {/* Per-lot current price and drop vs buy price */}
-                  <div
-                    className="mt-1 flex items-center justify-between text-xs"
-                    style={{ color: theme.colors.textSecondary }}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <span>Current price ($):</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={lotCurrentPrices[lot.id] ?? ''}
-                        onChange={(e) => handleLotCurrentPriceChange(lot.id, e.target.value)}
-                        className="w-20 px-2 py-1 border rounded text-right"
-                        style={{
-                          borderColor: theme.colors.border,
-                          backgroundColor: theme.colors.surface,
-                          color: theme.colors.text
-                        }}
-                        placeholder={lot.buy_price_per_share}
-                      />
-                    </div>
-                    {hasLotDrop && (
+                  {/* Drop vs buy price (uses global current price) */}
+                  {hasLotDrop && (
+                    <div className="mt-1 text-xs">
                       <span
                         className="font-medium"
                         style={{
@@ -415,8 +433,8 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
                           ? `${lotDropPercent.toFixed(2)}% drop`
                           : `${Math.abs(lotDropPercent).toFixed(2)}% gain`}
                       </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex space-x-2">
                   <button
