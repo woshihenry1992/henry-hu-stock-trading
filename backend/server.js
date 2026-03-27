@@ -1059,7 +1059,7 @@ app.get('/api/transactions', authenticateToken, (req, res) => {
             (SELECT SUM((sl.sell_price_per_share - sl.buy_price_per_share) * sl.shares)
              FROM share_lots sl 
              WHERE sl.sell_transaction_id = t.id), 0
-          )
+          ) - (1.10 + (0.0033 * t.shares))
         ELSE 0
       END as earned_amount
     FROM transactions t
