@@ -103,15 +103,15 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
   const totalCost = selectedLotsData.reduce((sum, lot) => sum + (lot.shares * lot.buy_price_per_share), 0);
   const averagePrice = totalSelectedShares > 0 ? totalCost / totalSelectedShares : 0;
 
-  // Match Transaction History "Earned" calculation (gross profit only)
+  // Calculate estimated earnings
   const sellPriceNum = parseFloat(sellPrice) || 0;
   const grossEarnings = (sellPriceNum * totalSelectedShares) - (averagePrice * totalSelectedShares);
   
   // Calculate selling cost: base fee $1.10 + $0.0033 per share
   const sellingCost = totalSelectedShares > 0 ? 1.10 + (0.0033 * totalSelectedShares) : 0;
   
-  // Keep preview aligned with backend earned_amount in transaction history
-  const estimatedEarnings = grossEarnings;
+  // Net earnings after deducting selling cost
+  const estimatedEarnings = grossEarnings - sellingCost;
 
   // Generate user-friendly preview sentence
   const getPreviewSentence = () => {
@@ -543,14 +543,14 @@ const SellShares = ({ stock, onSharesSold, onClose, onPortfolioRefresh }) => {
             {/* Estimated Earnings Section */}
             {sellPrice && (
               <div className="mb-3">
-                <div className="text-sm text-blue-700 mb-1">Estimated Earned (Matches History):</div>
+                <div className="text-sm text-blue-700 mb-1">Estimated Earned:</div>
                 <div className={`text-lg font-semibold ${estimatedEarnings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   ${estimatedEarnings.toFixed(2)}
                 </div>
                 <div className="text-xs text-blue-600 mt-1">
                   Gross: (${sellPriceNum.toFixed(2)} × {totalSelectedShares}) - (${averagePrice.toFixed(2)} × {totalSelectedShares}) = ${grossEarnings.toFixed(2)}
                   {totalSelectedShares > 0 && (
-                    <span> | Selling cost shown below: ${sellingCost.toFixed(2)}</span>
+                    <span> | Net: ${grossEarnings.toFixed(2)} - ${sellingCost.toFixed(2)} (fees) = ${estimatedEarnings.toFixed(2)}</span>
                   )}
                 </div>
               </div>
